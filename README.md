@@ -86,6 +86,11 @@ python -m retro_core_tracer.ui.app
     *   [`debugger/`](src/retro_core_tracer/debugger/ARCHITECTURE_MANIFEST.md): 実行制御とブレークポイント。
     *   [`loader/`](src/retro_core_tracer/loader/ARCHITECTURE_MANIFEST.md): HEXファイルローダー。
     *   [`ui/`](src/retro_core_tracer/ui/ARCHITECTURE_MANIFEST.md): PySide6によるユーザーインターフェース。
+*   `hex-sample/`: テスト用のIntel HEXサンプルファイル。
+*   `tests/`: 各コンポーネントのユニットテスト。
+*   `assets/`: アプリケーションのスナップショット画像。
+*   `ARCHITECTURE_MANIFEST.md`: ルートマニフェスト（プロジェクト全体の憲法）。
+*   `spec.md`: プロジェクトの全体仕様書。
 
 ---
 
