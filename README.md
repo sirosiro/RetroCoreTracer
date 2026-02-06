@@ -4,7 +4,7 @@
 
 Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ、バス、フラグ、スタック）をリアルタイムかつ詳細に可視化するための教育的ツールです。単に命令を実行するだけでなく、「ビットの羅列がどのように意味を持ち、回路を駆動するか」というプロセスを透明化することを目的としています。
 
-![Retro Core Tracer Main Window](assets/Main-window-snapshot.png)
+![Retro Core Tracer Main Window](./docs/assets/Main-window-snapshot.png)
 
 現在は **Z80** アーキテクチャに対応しています。
 
@@ -86,11 +86,12 @@ python -m retro_core_tracer.ui.app
     *   [`debugger/`](src/retro_core_tracer/debugger/ARCHITECTURE_MANIFEST.md): 実行制御とブレークポイント。
     *   [`loader/`](src/retro_core_tracer/loader/ARCHITECTURE_MANIFEST.md): HEXファイルローダー。
     *   [`ui/`](src/retro_core_tracer/ui/ARCHITECTURE_MANIFEST.md): PySide6によるユーザーインターフェース。
-*   `hex-sample/`: テスト用のIntel HEXサンプルファイル。
+*   `examples/`: サンプルプログラム（例: `z80_sample.hex`）。
 *   `tests/`: 各コンポーネントのユニットテスト。
-*   `assets/`: アプリケーションのスナップショット画像。
+*   `docs/`: ドキュメントとリソース。
+    *   `spec.md`: プロジェクトの全体仕様書。
+    *   `assets/`: 画像リソース。
 *   `ARCHITECTURE_MANIFEST.md`: ルートマニフェスト（プロジェクト全体の憲法）。
-*   `spec.md`: プロジェクトの全体仕様書。
 
 ---
 
