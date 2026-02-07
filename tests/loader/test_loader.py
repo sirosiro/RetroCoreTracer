@@ -115,19 +115,36 @@ class TestIntelHexLoader:
 
 class TestAssemblyLoader:
     """
-    AssemblyLoaderの単体テスト（現時点ではスタブ）。
+    AssemblyLoaderの単体テスト。
     """
-    # @intent:test_case_stub load_assemblyメソッドがダミーのシンボルマップを返し、適切なメッセージを出力することを検証します。
-    def test_load_assembly_stub(self, capsys, tmp_path):
-        asm_loader = AssemblyLoader()
+    # @intent:test_case_basic 簡易的なアセンブリコードを正しくロードし、シンボルマップを生成することを検証します。
+    def test_load_assembly_basic(self, tmp_path):
+        bus = Bus()
+        ram = RAM(0x1000)
+        bus.register_device(0x0000, 0x0FFF, ram)
+        
+        asm_content = """
+        ORG 0x100
+        start:
+            NOP
+            DB 0x12, 0x34
+        loop:
+            LD A, 0xFF
+            HALT
+        """
         asm_file = tmp_path / "test.asm"
-        asm_file.write_text("LD A,B") # 適当な内容
+        asm_file.write_text(asm_content)
 
-        dummy_bus = Bus() # ダミーのBusインスタンスを作成
-        symbol_map = asm_loader.load_assembly(str(asm_file), dummy_bus)
+        loader = AssemblyLoader()
+        symbol_map = loader.load_assembly(str(asm_file), bus)
 
-        assert isinstance(symbol_map, dict)
-        assert symbol_map == {"start": 0x0000, "main": 0x1000}
-
-        captured = capsys.readouterr()
-        assert "Loading assembly file (stub)" in captured.out
+        # シンボルマップの検証
+        assert symbol_map == {"start": 0x100, "loop": 0x103}
+        
+        # メモリ配置の検証
+        assert ram.read(0x100) == 0x00 # NOP
+        assert ram.read(0x101) == 0x12 # DB
+        assert ram.read(0x102) == 0x34 # DB
+        assert ram.read(0x103) == 0x3E # LD A, n
+        assert ram.read(0x104) == 0xFF # n
+        assert ram.read(0x105) == 0x76 # HALT

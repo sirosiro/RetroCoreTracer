@@ -92,13 +92,67 @@ class IntelHexLoader:
 class AssemblyLoader:
     """
     アセンブリソースコードを解析し、シンボル情報を抽出し、
-    バイナリに変換してバスにロードする（将来的には）。
+    バイナリに変換してバスにロードする簡易ローダー。
     """
     def load_assembly(self, file_path: str, bus: Bus) -> SymbolMap:
         """
         アセンブリファイルを読み込み、解析し、シンボルマップを生成します。
-        （現時点ではスタブ）
+        ORG, DB, ラベル、および一部の基本命令をサポートします。
         """
-        # TODO: アセンブリのパーサーとアセンブラを実装
-        print(f"Loading assembly file (stub): {file_path}")
-        return {"start": 0x0000, "main": 0x1000} # ダミーのシンボルマップ
+        symbol_map: SymbolMap = {}
+        current_pc = 0x0000
+        binary_data: List[Tuple[int, int]] = [] # (address, byte)
+
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+
+        # パス1: シンボルの収集とアドレスの確定
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith(';'):
+                continue
+            
+            # コメント除去
+            line = line.split(';')[0].strip()
+            
+            # ラベルの抽出 (label:)
+            if ':' in line:
+                label, rest = line.split(':', 1)
+                symbol_map[label.strip()] = current_pc
+                line = rest.strip()
+                if not line:
+                    continue
+
+            parts = re.split(r'\s+', line, maxsplit=1)
+            mnemonic = parts[0].upper()
+            operands = parts[1] if len(parts) > 1 else ""
+
+            if mnemonic == "ORG":
+                current_pc = int(operands.replace('$', '0x').replace('H', ''), 0)
+            elif mnemonic == "DB":
+                for val_str in operands.split(','):
+                    val_str = val_str.strip()
+                    val = int(val_str.replace('$', '0x').replace('H', ''), 0)
+                    binary_data.append((current_pc, val & 0xFF))
+                    current_pc += 1
+            elif mnemonic == "NOP":
+                binary_data.append((current_pc, 0x00))
+                current_pc += 1
+            elif mnemonic == "HALT":
+                binary_data.append((current_pc, 0x76))
+                current_pc += 1
+            elif mnemonic == "LD":
+                # 簡易的な LD A, n のサポート
+                if operands.upper().startswith("A,"):
+                    n_str = operands.split(',')[1].strip()
+                    n = int(n_str.replace('$', '0x').replace('H', ''), 0)
+                    binary_data.append((current_pc, 0x3E))
+                    binary_data.append((current_pc + 1, n & 0xFF))
+                    current_pc += 2
+            # 他の命令は必要に応じて追加
+
+        # パス2: バスへの書き込み
+        for addr, data in binary_data:
+            bus.write(addr, data)
+
+        return symbol_map
