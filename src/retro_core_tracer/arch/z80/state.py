@@ -55,6 +55,8 @@ class Z80CpuState(CpuState):
     i: int = 0x00  # Interrupt Vector
     r: int = 0x00  # Refresh Register
 
+    halted: bool = False # CPU stop state flag
+
     # @intent:accessor Z80のFレジスタの各フラグビットにアクセスするためのプロパティを提供します。
     # @intent:rationale フラグを直接ビット操作する代わりに、分かりやすいプロパティとして提供することで、コードの可読性と保守性を高めます。
     #                   ゲッターとセッターを通じてFレジスタの対応するビットを操作します。

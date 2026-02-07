@@ -10,7 +10,7 @@ from typing import List, Tuple, Callable
 from retro_core_tracer.arch.z80.state import Z80CpuState
 from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.core.snapshot import Operation
-from .alu import update_flags_add8, update_flags_sub8, update_flags_logic8, update_flags_inc_dec8
+from .alu import update_flags_add8, update_flags_sub8, update_flags_logic8, update_flags_inc_dec8, update_flags_add16
 
 # Helper functions for register mapping
 REGISTER_CODES = {
@@ -35,9 +35,101 @@ def _set_register_value(state: Z80CpuState, bus: Bus, reg_name: str, value: int)
     else:
         setattr(state, reg_name.lower(), value & 0xFF)
 
+# @intent:utility_function PUSH/POP命令で使用されるレジスタペア名を返します。
+def _get_push_pop_reg_name(code: int) -> str:
+    return {0b00: "BC", 0b01: "DE", 0b10: "HL", 0b11: "AF"}.get(code, "UNKNOWN")
+
+# @intent:utility_function 16ビット演算で使用されるレジスタペア名(ss)を返します。
+def _get_ss_reg_name(code: int) -> str:
+    return {0b00: "BC", 0b01: "DE", 0b10: "HL", 0b11: "SP"}.get(code, "UNKNOWN")
+
 # --- Decoding Functions ---
 
-# @intent:responsibility オペコード0x00 (NOP)をデコードします。
+# @intent:responsibility ADD HL,ss 形式の命令をデコードします。
+def decode_add_hl_ss(opcode: int, bus: Bus, pc: int) -> Operation:
+    """ADD HL,ss命令をデコードします。"""
+    ss_code = (opcode >> 4) & 0b11
+    ss_name = _get_ss_reg_name(ss_code)
+    return Operation(
+        opcode_hex=f"{opcode:02X}",
+        mnemonic=f"ADD HL,{ss_name}",
+        operands=[],
+        cycle_count=11,
+        length=1
+    )
+
+# @intent:responsibility SUB/ADC/SBC r 形式の命令をデコードします。
+def decode_arith_r(opcode: int, bus: Bus, pc: int) -> Operation:
+    """SUB/ADC/SBC r命令をデコードします。"""
+    src_reg_code = opcode & 0b111
+    src_reg_name = _get_register_name(src_reg_code)
+    op_type = (opcode >> 3) & 0b111 # 001: ADC, 010: SUB, 011: SBC
+    op_name = {0b001: "ADC A,", 0b010: "SUB ", 0b011: "SBC A,"}.get(op_type)
+    
+    return Operation(
+        opcode_hex=f"{opcode:02X}",
+        mnemonic=f"{op_name}{src_reg_name}",
+        operands=[],
+        cycle_count=4 if src_reg_name != "(HL)" else 7,
+        length=1
+    )
+
+# @intent:responsibility AND/OR/XOR r 形式の命令をデコードします。
+def decode_logic_r(opcode: int, bus: Bus, pc: int) -> Operation:
+    """AND/OR/XOR r命令をデコードします。"""
+    src_reg_code = opcode & 0b111
+    src_reg_name = _get_register_name(src_reg_code)
+    op_type_code = (opcode >> 3) & 0b11
+    op_name = {0b100: "AND", 0b110: "OR", 0b101: "XOR"}.get((opcode >> 3) & 0b111)
+    
+    return Operation(
+        opcode_hex=f"{opcode:02X}",
+        mnemonic=f"{op_name} A,{src_reg_name}",
+        operands=[],
+        cycle_count=4 if src_reg_name != "(HL)" else 7,
+        length=1
+    )
+
+# @intent:responsibility オペコード0xCD (CALL nn) をデコードします。
+def decode_cd(opcode: int, bus: Bus, pc: int) -> Operation:
+    """CALL nn命令をデコードします。"""
+    nn_low = bus.read(pc + 1)
+    nn_high = bus.read(pc + 2)
+    nn = (nn_high << 8) | nn_low
+    return Operation(
+        opcode_hex="CD",
+        mnemonic="CALL nn",
+        operands=[f"${nn:04X}"],
+        cycle_count=17,
+        length=3,
+        operand_bytes=[nn_low, nn_high]
+    )
+
+# @intent:responsibility オペコード0xC9 (RET) をデコードします。
+def decode_c9(opcode: int, bus: Bus, pc: int) -> Operation:
+    """RET命令をデコードします。"""
+    return Operation(
+        opcode_hex="C9",
+        mnemonic="RET",
+        operands=[],
+        cycle_count=10,
+        length=1
+    )
+
+def decode_push_pop(opcode: int, bus: Bus, pc: int) -> Operation:
+    """PUSH/POP命令をデコードします。"""
+    reg_code = (opcode >> 4) & 0b11
+    reg_name = _get_push_pop_reg_name(reg_code)
+    is_push = (opcode & 0x0F) == 0x05
+    mnemonic = f"{'PUSH' if is_push else 'POP'} {reg_name}"
+    return Operation(
+        opcode_hex=f"{opcode:02X}",
+        mnemonic=mnemonic,
+        operands=[],
+        cycle_count=11 if is_push else 10,
+        length=1
+    )
+
 def decode_00(opcode: int, bus: Bus, pc: int) -> Operation:
     """NOP命令をデコードします。"""
     return Operation(opcode_hex="00", mnemonic="NOP", operands=[], cycle_count=4, length=1)
@@ -202,12 +294,105 @@ def decode_jr_cc_e(opcode: int, bus: Bus, pc: int) -> Operation:
 
 # --- Execution Functions ---
 
+def execute_add_hl_ss(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    ss_code = (opcode >> 4) & 0b11
+    ss_name = _get_ss_reg_name(ss_code).lower()
+    val = getattr(state, ss_name)
+    result = state.hl + val
+    update_flags_add16(state, state.hl, val, result)
+    state.hl = result & 0xFFFF
+
+def execute_arith_r(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    src_reg_code = opcode & 0b111
+    src_reg_name = _get_register_name(src_reg_code)
+    val = _get_register_value(state, bus, src_reg_name)
+    op_type = (opcode >> 3) & 0b111 # 001: ADC, 010: SUB, 011: SBC
+    
+    if op_type == 0b001: # ADC A, r
+        carry = 1 if state.flag_c else 0
+        result = state.a + val + carry
+        update_flags_add8(state, state.a, val, result, carry_in=carry)
+        state.a = result & 0xFF
+    elif op_type == 0b010: # SUB r
+        result = state.a - val
+        update_flags_sub8(state, state.a, val, result)
+        state.a = result & 0xFF
+    elif op_type == 0b011: # SBC A, r
+        borrow = 1 if state.flag_c else 0
+        result = state.a - val - borrow
+        update_flags_sub8(state, state.a, val, result, borrow_in=borrow)
+        state.a = result & 0xFF
+
+def execute_logic_r(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    src_reg_code = opcode & 0b111
+    src_reg_name = _get_register_name(src_reg_code)
+    val = _get_register_value(state, bus, src_name := src_reg_name)
+    op_type = (opcode >> 3) & 0b111 # 100: AND, 101: XOR, 110: OR
+    
+    if op_type == 0b100: # AND
+        state.a &= val
+        update_flags_logic8(state, state.a, h_flag=True)
+    elif op_type == 0b101: # XOR
+        state.a ^= val
+        update_flags_logic8(state, state.a, h_flag=False)
+    elif op_type == 0b110: # OR
+        state.a |= val
+        update_flags_logic8(state, state.a, h_flag=False)
+
+def execute_cd(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    # CALL nn: Push PC to stack, then jump
+    # PC is already at the instruction AFTER CALL nn (since length=3 was added in step)
+    high = (state.pc >> 8) & 0xFF
+    low = state.pc & 0xFF
+    state.sp = (state.sp - 1) & 0xFFFF
+    bus.write(state.sp, high)
+    state.sp = (state.sp - 1) & 0xFFFF
+    bus.write(state.sp, low)
+    
+    # Target address from operands
+    nn_low, nn_high = operation.operand_bytes
+    state.pc = (nn_high << 8) | nn_low
+
+def execute_c9(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    # RET: Pop PC from stack
+    low = bus.read(state.sp)
+    state.sp = (state.sp + 1) & 0xFFFF
+    high = bus.read(state.sp)
+    state.sp = (state.sp + 1) & 0xFFFF
+    state.pc = (high << 8) | low
+
+def execute_push_pop(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    reg_code = (opcode >> 4) & 0b11
+    reg_name = _get_push_pop_reg_name(reg_code).lower()
+    is_push = (opcode & 0x0F) == 0x05
+
+    if is_push:
+        # PUSH: SP <- SP - 1, (SP) <- high; SP <- SP - 1, (SP) <- low
+        val = getattr(state, reg_name)
+        high = (val >> 8) & 0xFF
+        low = val & 0xFF
+        state.sp = (state.sp - 1) & 0xFFFF
+        bus.write(state.sp, high)
+        state.sp = (state.sp - 1) & 0xFFFF
+        bus.write(state.sp, low)
+    else:
+        # POP: low <- (SP), SP <- SP + 1; high <- (SP), SP <- SP + 1
+        low = bus.read(state.sp)
+        state.sp = (state.sp + 1) & 0xFFFF
+        high = bus.read(state.sp)
+        state.sp = (state.sp + 1) & 0xFFFF
+        setattr(state, reg_name, (high << 8) | low)
+
 def execute_00(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
     pass
 
 def execute_76(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
-    # TODO: Implement HALT state
-    pass
+    # @intent:responsibility CPUをHALT（停止）状態にします。割り込みが発生するまで停止し続けます。
+    state.halted = True
 
 def execute_ld_r_n(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
     opcode = int(operation.opcode_hex, 16)
@@ -292,14 +477,21 @@ DECODE_MAP = {
     0x76: decode_76,
     0x21: decode_21,
     0xC3: decode_c3,
+    0xC9: decode_c9,
+    0xCD: decode_cd,
     0x18: decode_18,
     0xFE: decode_fe,
+    **{op: decode_add_hl_ss for op in range(0x09, 0x40, 0x10)}, # ADD HL,ss
     **{op: decode_ld_r_n for op in range(0x06, 0x40, 0x08)}, # LD r,n
     **{op: decode_jr_cc_e for op in range(0x20, 0x40, 0x08)},
     **{op: decode_ld_r_r_prime for op in range(0x40, 0x80) if op != 0x76},
     **{op: decode_inc_dec8 for op in range(0x04, 0x40, 0x08)}, # INC r
     **{op: decode_inc_dec8 for op in range(0x05, 0x40, 0x08)}, # DEC r
     **{op: decode_add_a_r for op in range(0x80, 0x88)},
+    **{op: decode_arith_r for op in range(0x88, 0xA0)}, # ADC, SUB, SBC r
+    **{op: decode_logic_r for op in range(0xA0, 0xB8)}, # AND, XOR, OR r
+    **{op: decode_push_pop for op in range(0xC5, 0x100, 0x10)}, # PUSH qq
+    **{op: decode_push_pop for op in range(0xC1, 0x100, 0x10)}, # POP qq
 }
 
 EXECUTE_MAP = {
@@ -308,14 +500,21 @@ EXECUTE_MAP = {
     0x76: execute_76,
     0x21: execute_21,
     0xC3: execute_c3,
+    0xC9: execute_c9,
+    0xCD: execute_cd,
     0x18: execute_18,
     0xFE: execute_fe,
+    **{op: execute_add_hl_ss for op in range(0x09, 0x40, 0x10)},
     **{op: execute_ld_r_n for op in range(0x06, 0x40, 0x08)},
     **{op: execute_jr_cc_e for op in range(0x20, 0x40, 0x08)},
     **{op: execute_ld_r_r_prime for op in range(0x40, 0x80) if op != 0x76},
     **{op: execute_inc_dec8 for op in range(0x04, 0x40, 0x08)},
     **{op: execute_inc_dec8 for op in range(0x05, 0x40, 0x08)},
     **{op: execute_add_a_r for op in range(0x80, 0x88)},
+    **{op: execute_arith_r for op in range(0x88, 0xA0)},
+    **{op: execute_logic_r for op in range(0xA0, 0xB8)},
+    **{op: execute_push_pop for op in range(0xC5, 0x100, 0x10)},
+    **{op: execute_push_pop for op in range(0xC1, 0x100, 0x10)},
 }
 
 # @intent:responsibility 与えられたオペコードをZ80の命令としてデコードします。

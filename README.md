@@ -20,6 +20,12 @@ Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ
     *   **Stack View:** スタックポインタ周辺のメモリを可視化。
     *   **Breakpoints:** PC一致、メモリ読み書き、レジスタ変化など、柔軟な条件でのブレークポイント設定。
 
+### 対応するZ80命令セット (Implemented Instructions)
+*   **転送命令:** `LD r,n`, `LD r,r'`, `LD HL,nn`, `PUSH`, `POP`
+*   **演算命令:** `INC`, `DEC`, `ADD A,r`, `SUB`, `ADC`, `SBC`, `AND`, `OR`, `XOR`, `CP`, `ADD HL,ss`
+*   **分岐命令:** `JP nn`, `JR e`, `JR cc,e`, `DJNZ`, `CALL`, `RET`
+*   **その他:** `NOP`, `HALT`
+
 ## 🚀 インストール
 
 ### 前提条件

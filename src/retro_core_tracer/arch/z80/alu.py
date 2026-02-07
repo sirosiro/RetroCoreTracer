@@ -75,3 +75,12 @@ def update_flags_inc_dec8(state: Z80CpuState, val: int, result: int, is_inc: boo
         state.flag_h = (val & 0x0F) == 0x00
         state.flag_pv = val == 0x80 # -128 -> 127
         state.flag_n = True
+
+# @intent:responsibility 16ビット加算の結果に基づいてフラグ（H, N, C）を更新します。
+# @intent:rationale Z, S, P/Vフラグは影響を受けないことに注意してください。
+def update_flags_add16(state: Z80CpuState, val1: int, val2: int, result: int) -> None:
+    """ADD HL,ss命令のフラグを更新します。"""
+    # Half Carry: Bit 11から12へのキャリー
+    state.flag_h = ((val1 & 0x0FFF) + (val2 & 0x0FFF)) > 0x0FFF
+    state.flag_n = False
+    state.flag_c = result > 0xFFFF

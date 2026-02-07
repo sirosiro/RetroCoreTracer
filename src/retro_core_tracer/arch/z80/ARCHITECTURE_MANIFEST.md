@@ -80,6 +80,7 @@
     - `update_flags_add8(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 8ビット加算のフラグ更新。
     - `update_flags_sub8(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 8ビット減算のフラグ更新。
     - `update_flags_logic8(state: Z80CpuState, result: int) -> None`: 8ビット論理演算のフラグ更新。
+    - `update_flags_add16(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 16ビット加算のフラグ更新。
 
 #### 4.5. Z80Disassembler (逆アセンブラ、`disassembler.py`に実装)
 - **責務 (Responsibility):** 指定されたメモリ範囲のバイナリデータを解析し、Z80アセンブリ言語のニーモニック形式に変換する。
@@ -95,6 +96,7 @@
     - **代替レジスタ:** `a_`, `b_`, `c_`, `d_`, `e_`, `h_`, `l_`, `f_`。
     - **インデックスレジスタ:** `ix`, `iy` (16ビットレジスタ)。
     - **特殊用途レジスタ:** `i` (割り込みベクタレジスタ), `r` (リフレッシュレジスタ)。
+    - **CPU状態フラグ:** `halted` (CPUがHALT命令により停止中かどうかを示すブール値)。
 - **提供するAPI (Public API) - プロパティ:**
     - **フラグアクセサ:** `flag_s`, `flag_z`, `flag_h`, `flag_pv`, `flag_n`, `flag_c` (それぞれ`bool`型のゲッター/セッターを提供し、`f`レジスタの対応するビットを操作する)。
     - **16ビットレジスタペアアクセサ:** `af`, `bc`, `de`, `hl` (それぞれ`int`型のゲッター/セッターを提供し、対応する8ビットレジスタペアを操作する)。

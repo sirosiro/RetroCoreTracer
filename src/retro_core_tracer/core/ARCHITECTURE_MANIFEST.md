@@ -146,7 +146,7 @@
     - `AbstractCpu`インスタンスは、`bus`と`_state`への参照を保持し、アプリケーションのライフサイクルを通じて命令実行を制御する。
 
 #### 4.6. アーキテクチャ上の検討事項 (Architectural Considerations)
-- **BusAccessTypeとBusAccessの定義重複:**
-    - 現在、`src/retro_core_tracer/transport/bus.py`と`src/retro_core_tracer/core/snapshot.py`の両方で`BusAccessType`と`BusAccess`が独立して定義されている。
-    - **影響:** コードの重複、定義の不整合リスク、および`core/snapshot.py`が`transport/bus.py`を直接インポートすると循環参照を引き起こす可能性がある（`transport.bus`は`core.snapshot`をインポートしない）。
-    - **解決案:** これらの共通データ構造を`src/retro_core_tracer/common/`のような共有モジュールに移動するか、`snapshot.py`が`transport.bus`からインポートするようにリファクタリングを検討する。後者の場合、`snapshot`の定義は`transport`に依存することになるが、バスアクティビティを記録する`BusAccess`は概念的に`transport`層に属するため、より自然である。現時点では、`AbstractCpu`が`Snapshot`を使用するため、`core/snapshot.py`が`transport.bus`をインポートする形が望ましいが、循環参照を防ぐためには定義の移動が最も健全な解決策となる。
+- **BusAccessTypeとBusAccessの定義場所:**
+    - **課題:** `Snapshot`はバスアクティビティを記録するために`BusAccess`型を必要とする。
+    - **決定:** `BusAccess`および`BusAccessType`は`src/retro_core_tracer/transport/bus.py`で定義し、`src/retro_core_tracer/core/snapshot.py`はこれをインポートして使用する。
+    - **理由:** バスアクセス情報の定義はTransport層の責務であり、Core層のSnapshotはそれを「利用」する立場であるため。これにより定義の重複を排除し、単一の真実（Single Source of Truth）を維持する。

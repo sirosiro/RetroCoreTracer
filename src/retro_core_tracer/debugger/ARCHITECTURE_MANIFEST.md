@@ -104,9 +104,13 @@
     - `remove_breakpoint(self, condition: BreakpointCondition) -> None`:
         - **責務:** 既存のブレークポイント条件をデバッガのリストから削除する。
         - **引数:** `condition` (`BreakpointCondition`) - 削除するブレークポイント条件。
+    - `get_breakpoints(self) -> List[BreakpointCondition]`:
+        - **責務:** 現在設定されている全てのブレークポイントのリスト（コピー）を返す。
     - `step_instruction(self) -> Snapshot`:
         - **責務:** `AbstractCpu`の`step()`メソッドを1回呼び出し、CPUを1命令分実行する。実行結果として`Snapshot`オブジェクトを返し、`REGISTER_CHANGE`ブレークポイントのために前回のCPU状態を更新する。
         - **戻り値:** `Snapshot` - 命令実行後のCPUとバスの状態。
+    - `get_last_snapshot(self) -> Optional[Snapshot]`:
+        - **責務:** 最後に実行されたステップ（命令）の結果生成された`Snapshot`オブジェクトを返す。まだ実行されていない場合は`None`を返す。
     - `run(self) -> None`:
         - **責務:** CPUの実行を連続的に継続する。ブレークポイントにヒットするか、`stop()`メソッドが呼び出されるまでループを続ける。
         - **実行制御フロー:**

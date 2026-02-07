@@ -56,6 +56,19 @@ class Z80Cpu(AbstractCpu):
         # 各命令実行前のバスアクティビティログをクリア
         self._bus.get_and_clear_activity_log()
 
+        if self._state.halted:
+            # @intent:responsibility CPUがHALT状態の場合、NOP命令として振る舞い、PCを維持します。
+            # HALT中はバスアクティビティは発生しません（メモリ読み込みは行わない）。
+            operation = Operation(opcode_hex="76", mnemonic="HALT (suspended)", cycle_count=4, length=0)
+            bus_activity = []
+            snapshot = Snapshot(
+                state=self.get_state(),
+                operation=operation,
+                metadata=Metadata(cycle_count=operation.cycle_count, symbol_info=f"PC: {initial_pc:#06x} -> HALT (suspended)"),
+                bus_activity=bus_activity,
+            )
+            return snapshot
+
         # フェッチ
         opcode = self._fetch() # fetch_opcode_byte from current PC and log in bus
 
