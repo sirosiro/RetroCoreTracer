@@ -60,11 +60,12 @@ class Z80Cpu(AbstractCpu):
             # @intent:responsibility CPUがHALT状態の場合、NOP命令として振る舞い、PCを維持します。
             # HALT中はバスアクティビティは発生しません（メモリ読み込みは行わない）。
             operation = Operation(opcode_hex="76", mnemonic="HALT (suspended)", cycle_count=4, length=0)
+            self._cycle_count += operation.cycle_count
             bus_activity = []
             snapshot = Snapshot(
                 state=self.get_state(),
                 operation=operation,
-                metadata=Metadata(cycle_count=operation.cycle_count, symbol_info=f"PC: {initial_pc:#06x} -> HALT (suspended)"),
+                metadata=Metadata(cycle_count=self._cycle_count, symbol_info=f"PC: {initial_pc:#06x} -> HALT (suspended)"),
                 bus_activity=bus_activity,
             )
             return snapshot
@@ -84,11 +85,14 @@ class Z80Cpu(AbstractCpu):
         # この命令サイクルで発生したすべてのバスアクティビティを取得
         bus_activity = self._bus.get_and_clear_activity_log()
 
+        # サイクルカウントを更新
+        self._cycle_count += operation.cycle_count
+
         # スナップショットの生成
         snapshot = Snapshot(
             state=self.get_state(), # 実行後の状態
             operation=operation,
-            metadata=Metadata(cycle_count=operation.cycle_count, symbol_info=f"PC: {initial_pc:#06x} -> {operation.mnemonic}"),
+            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=f"PC: {initial_pc:#06x} -> {operation.mnemonic}"),
             bus_activity=bus_activity, # Actual bus activity
         )
         return snapshot

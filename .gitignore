@@ -149,3 +149,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# CIP
+DESIGN_PHILOSOPHY.md

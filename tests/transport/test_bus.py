@@ -138,3 +138,43 @@ class TestBus:
 
         assert bus.read(0x0005) == 0xA5
         assert bus.read(0x0015) == 0x5A
+
+    # @intent:test_case_log バスのアクティビティログが操作順に記録され、取得時にクリアされることを検証します。
+    def test_bus_activity_log_order_and_clear(self):
+        from retro_core_tracer.transport.bus import BusAccessType
+        
+        bus = Bus()
+        ram = RAM(16)
+        bus.register_device(0x0000, 0x000F, ram)
+
+        # 1. Write 0xAA to 0x0005
+        bus.write(0x0005, 0xAA)
+        # 2. Read from 0x0005 (expect 0xAA)
+        val = bus.read(0x0005)
+        # 3. Write 0xBB to 0x000A
+        bus.write(0x000A, 0xBB)
+
+        # ログを取得
+        log = bus.get_and_clear_activity_log()
+
+        # ログの件数と順序を確認
+        assert len(log) == 3
+        
+        # 1. Write
+        assert log[0].address == 0x0005
+        assert log[0].data == 0xAA
+        assert log[0].access_type == BusAccessType.WRITE
+        
+        # 2. Read
+        assert log[1].address == 0x0005
+        assert log[1].data == 0xAA
+        assert log[1].access_type == BusAccessType.READ
+        
+        # 3. Write
+        assert log[2].address == 0x000A
+        assert log[2].data == 0xBB
+        assert log[2].access_type == BusAccessType.WRITE
+
+        # ログがクリアされていることを確認
+        log_after = bus.get_and_clear_activity_log()
+        assert len(log_after) == 0

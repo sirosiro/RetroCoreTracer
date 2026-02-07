@@ -130,6 +130,7 @@
 
 #### 4.3. Z80Cpu (具象CPUエミュレータ)
 - **責務 (Responsibility):** `AbstractCpu`インターフェースをZ80プロセッサ向けに完全に実装し、Z80固有の`Z80CpuState`と`Z80InstructionSet`を利用して、フェッチ、デコード、実行の命令サイクルをオーケストレートする。
+- **追加責務:** 命令ごとの正確なマシンサイクル（Mサイクル/Tステート）を計算し、`Snapshot.metadata` に反映させる。条件分岐命令における分岐成立/不成立によるサイクル数の変化も正確にエミュレートする。
 - **継承元:** `AbstractCpu`。
 - **提供するAPI (Public API) - `AbstractCpu`からのオーバーライド:**
     - `_create_initial_state(self) -> Z80CpuState`:

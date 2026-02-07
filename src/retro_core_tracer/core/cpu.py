@@ -23,6 +23,7 @@ class AbstractCpu(ABC):
     def __init__(self, bus: Bus):
         self._bus = bus
         self._state: CpuState = self._create_initial_state()
+        self._cycle_count: int = 0
         # @intent:rationale Stateオブジェクトの直接操作を避けるため、protectedな命名規則を採用。
         #                  外部からのアクセスは`get_state()`メソッドを介して行う。
 
@@ -88,29 +89,35 @@ class AbstractCpu(ABC):
         フェッチ -> デコード -> 実行の順序で処理を実行します。
         具体的な実装は派生クラスで行われますが、このメソッドがそれらをオーケストレーションします。
         """
+        # 前サイクルまでの残存ログを破棄
+        self._bus.get_and_clear_activity_log()
+
         initial_pc = self._state.pc # フェッチ前のPCを保存
 
         # フェッチ
         opcode = self._fetch()
-        # @todo-intent: bus_activityにフェッチ時のバスアクセスを記録する
-
+        
         # デコード
         operation = self._decode(opcode)
 
         # 実行
         self._execute(operation)
-        # @todo-intent: bus_activityに実行時のバスアクセスを記録する
+        
+        # このサイクルで発生したバスアクティビティを取得
+        bus_activity = self._bus.get_and_clear_activity_log()
 
-        # @todo-intent: cycle_countやsymbol_infoを正確に取得する
+        # サイクルカウントを更新
+        self._cycle_count += operation.cycle_count
+
+        # @todo-intent: symbol_infoを正確に取得する
 
         # スナップショットの生成
-        # 現時点ではbus_activityとmetadataはダミー値
-        # TODO: bus_activity と metadata を正確に生成するようにする
+        # TODO: metadata を正確に生成するようにする
         snapshot = Snapshot(
             state=self.get_state(), # 実行後の状態
             operation=operation,
-            bus_activity=[], # 今は空リスト
-            metadata=Metadata(cycle_count=0, symbol_info=f"PC: {initial_pc:#06x} -> {operation.mnemonic}")
+            bus_activity=bus_activity,
+            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=f"PC: {initial_pc:#06x} -> {operation.mnemonic}")
         )
         return snapshot
 

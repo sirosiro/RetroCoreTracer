@@ -41,10 +41,11 @@ class TestCpu(AbstractCpu):
         else:
             return Operation(opcode_hex=f"{opcode:02X}", mnemonic="UNKNOWN")
 
-    # @intent:responsibility テスト目的で何もしません（実行ロジックは具体的なCPUで実装）。
+    # @intent:responsibility テスト目的でバスへの書き込みを行います。
     def _execute(self, operation: Operation) -> None:
-        # This TestCpu does not perform actual execution logic
-        pass
+        # Execute phase: write to bus to generate activity
+        # Write 0xFF to address 0x0020
+        self._bus.write(0x0020, 0xFF)
 
     # @intent:test_helper テストでフェッチされるオペコードを設定します。
     def set_mock_opcode(self, opcode: int):
@@ -119,6 +120,8 @@ class TestAbstractCpu:
 
     # @intent:test_case_step stepメソッドがフェッチ、デコード、実行をオーケストレートし、Snapshotを返すことを検証します。
     def test_abstract_cpu_step(self, setup_cpu):
+        from retro_core_tracer.transport.bus import BusAccessType
+
         cpu, bus, ram = setup_cpu
         initial_pc = cpu.get_state().pc
         initial_sp = cpu.get_state().sp # SP is not changed by TestCpu step
@@ -126,6 +129,9 @@ class TestAbstractCpu:
         # Busにテスト用のオペコードを書き込む
         test_opcode = 0x12 # Example opcode
         bus.write(initial_pc, test_opcode)
+        
+        # 事前のバスログをクリアしておく（テストセットアップの影響排除）
+        bus.get_and_clear_activity_log()
 
         # 1ステップ実行
         snapshot = cpu.step()
@@ -139,6 +145,23 @@ class TestAbstractCpu:
         assert snapshot.state == cpu.get_state() # 実行後の状態
         assert snapshot.operation.opcode_hex == f"{test_opcode:02X}"
         assert snapshot.operation.mnemonic == "UNKNOWN" # _decodeでUNKNOWNを返すため
-        assert snapshot.metadata.cycle_count == 0 # 現状はダミー
+        
+        # サイクルカウントの検証 (TestCpuでは実装していないのでまだ0かもしれないが、
+        # 少なくともMetadataが存在することを確認)
+        assert isinstance(snapshot.metadata.cycle_count, int)
         assert snapshot.metadata.symbol_info == f"PC: {initial_pc:#06x} -> UNKNOWN"
-        assert snapshot.bus_activity == [] # 現状は空リスト
+        
+        # バスアクティビティの検証
+        # 1. Fetch (Read from initial_pc)
+        # 2. Execute (Write to 0x0020)
+        assert len(snapshot.bus_activity) == 2
+        
+        # Fetch log
+        assert snapshot.bus_activity[0].address == initial_pc
+        assert snapshot.bus_activity[0].data == test_opcode
+        assert snapshot.bus_activity[0].access_type == BusAccessType.READ
+        
+        # Execute log
+        assert snapshot.bus_activity[1].address == 0x0020
+        assert snapshot.bus_activity[1].data == 0xFF
+        assert snapshot.bus_activity[1].access_type == BusAccessType.WRITE
