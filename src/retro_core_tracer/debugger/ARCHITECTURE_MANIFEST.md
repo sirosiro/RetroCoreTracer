@@ -121,15 +121,13 @@
     - `stop(self) -> None`:
         - **責務:** `run()`メソッドで実行中の連続実行ループを中断するようシグナルを送る。
 - **主要なデータ構造 (Key Data Structures):**
-    - `_cpu: AbstractCpu`: デバッグ対象の`AbstractCpu`インスタンスへの参照。
-    - `_breakpoints: List[BreakpointCondition]`: 現在アクティブな`BreakpointCondition`オブジェクトのリスト。
-    - `_running: bool`: デバッガが連続実行中であるかどうかを示すフラグ。
-    - `_previous_state: Optional[CpuState]`: `REGISTER_CHANGE`ブレークポイントの評価のために、直前のCPUの状態を保持する（現在の実装ではコメントアウトされ、利用されていない）。
+    - `_previous_state: Optional[CpuState]`: `REGISTER_CHANGE`ブレークポイントの評価のために、命令実行直前のCPUの状態を保持する。
 - **重要なアルゴリズム (Key Algorithms):**
     - **ブレークポイント評価:**
         - `PC_MATCH`は、`run()`ループ内で`AbstractCpu.get_state().pc`とブレークポイント条件の`value`を比較することで、命令実行*前*にチェックされる。
         - `MEMORY_READ`, `MEMORY_WRITE`は、`_check_other_breakpoints()`内で`Snapshot.bus_activity`を走査し、`BusAccess`のアドレスとタイプをブレークポイント条件と比較することで、命令実行*後*にチェックされる。
         - `REGISTER_VALUE`は、`_check_other_breakpoints()`内で`Snapshot.state`の指定されたレジスタ属性とブレークポイント条件の`value`を比較することで、命令実行*後*にチェックされる。
+        - `REGISTER_CHANGE`は、`_check_other_breakpoints()`内で`Snapshot.state`と`_previous_state`の指定されたレジスタ属性を比較し、値が異なる場合にヒットとみなされる。
     - **実行制御ループ:** `run()`メソッド内の`while self._running`ループが、ブレークポイントのチェックと`step_instruction()`の呼び出しを繰り返し、CPUの実行フローを管理する。
 - **状態とライフサイクル (State and Lifecycle):**
     - `Debugger`インスタンスは、`AbstractCpu`インスタンスへの参照を保持し、アプリケーションのライフサイクルを通じてデバッグセッションを管理する。

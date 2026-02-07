@@ -173,20 +173,69 @@ class TestDebugger:
         assert debugger._check_other_breakpoints(snapshot1)
         assert cpu.get_state().a == 0x55
 
+    # @intent:test_case_register_change_breakpoint REGISTER_CHANGEブレークポイントがヒットすることを検証します。
+    def test_register_change_breakpoint(self, setup_debugger):
+        debugger, cpu, bus, ram = setup_debugger
+        bp = BreakpointCondition(BreakpointConditionType.REGISTER_CHANGE, register_name="a")
+        debugger.add_breakpoint(bp)
+
+        cpu.get_state().pc = 0x0000
+        cpu.get_state().a = 0x00
+        
+        # 1. PC=0x0000: NOP (Aは変化しない)
+        bus.write(0x0000, 0x00)
+        snapshot1 = debugger.step_instruction()
+        assert not debugger._check_other_breakpoints(snapshot1)
+        
+        # 2. PC=0x0001: LD A,0x55 (Aが変化する)
+        bus.write(0x0001, 0x3E)
+        bus.write(0x0002, 0x55)
+        snapshot2 = debugger.step_instruction()
+        assert debugger._check_other_breakpoints(snapshot2)
+        assert cpu.get_state().a == 0x55
+
+    # @intent:test_case_run_until_memory_write_breakpoint run()メソッドがメモリ書き込みヒットで停止することを検証します。
+    def test_run_until_memory_write_breakpoint(self, setup_debugger):
+        debugger, cpu, bus, ram = setup_debugger
+        target_address = 0x2000
+        bp = BreakpointCondition(BreakpointConditionType.MEMORY_WRITE, address=target_address)
+        debugger.add_breakpoint(bp)
+
+        cpu.get_state().pc = 0x0000
+        bus.write(0x0000, 0x21) # LD HL,0x2000
+        bus.write(0x0001, 0x00)
+        bus.write(0x0002, 0x20)
+        bus.write(0x0003, 0x77) # LD (HL),A (メモリ書き込み発生)
+        bus.write(0x0004, 0x00) # NOP
+        
+        cpu.get_state().a = 0xAA
+
+        with patch('builtins.print') as mock_print:
+            debugger.run()
+
+            assert not debugger._running
+            # LD (HL),A の実行直後に停止するため、PCは0x0004を指しているはず
+            assert cpu.get_state().pc == 0x0004
+            mock_print.assert_any_call(f"Breakpoint hit at PC: 0x0004")
+
     # @intent:test_case_run_until_stop run()メソッドがstop()で停止することを検証します。
     def test_run_until_stop(self, setup_debugger):
         debugger, cpu, bus, ram = setup_debugger
         bus.write(0x0000, 0x00) # NOP
         bus.write(0x0001, 0x00) # NOP
         cpu.get_state().pc = 0x0000
+    
+        original_step = debugger.step_instruction
+        def mock_step_side_effect():
+            snapshot = original_step()
+            debugger.stop()
+            return snapshot
 
-        with patch.object(debugger, 'step_instruction', wraps=debugger.step_instruction) as mock_step_instruction:
+        with patch.object(debugger, 'step_instruction', side_effect=mock_step_side_effect) as mock_step_instruction:
             with patch.object(debugger, '_check_other_breakpoints', return_value=False) as mock_check_other_breakpoints:
-                mock_step_instruction.side_effect = lambda: debugger.stop()
                 debugger.run()
                 assert mock_step_instruction.call_count == 1
                 assert not debugger._running
-
     # @intent:test_case_run_until_breakpoint run()メソッドがブレークポイントヒットで停止することを検証します。
     def test_run_until_breakpoint(self, setup_debugger):
         debugger, cpu, bus, ram = setup_debugger

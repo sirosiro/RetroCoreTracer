@@ -82,7 +82,6 @@ class Debugger:
         ヒットしたかどうかをチェックします。
         """
         current_state = snapshot.state
-        # previous_state = self._previous_state # REGISTER_CHANGEで使用
 
         for bp in self._breakpoints:
             if bp.condition_type == BreakpointConditionType.MEMORY_READ:
@@ -95,27 +94,20 @@ class Debugger:
                         return True
             elif bp.condition_type == BreakpointConditionType.REGISTER_VALUE:
                 if bp.register_name:
-                    # CPUStateの属性としてレジスタ名が存在するかチェック
                     if hasattr(current_state, bp.register_name):
                         if getattr(current_state, bp.register_name) == bp.value:
                             return True
-            # REGISTER_CHANGEのブレークポイントチェック
-            if self._previous_state and self._check_register_change_breakpoint(current_state, self._previous_state):
-                return True
-
-        return False
-
-    def _check_register_change_breakpoint(self, current_state: CpuState, previous_state: CpuState) -> bool:
-        """
-        REGISTER_CHANGEタイプのブレークポイントがヒットしたかどうかをチェックします。
-        """
-        for bp in self._breakpoints:
-            if bp.condition_type == BreakpointConditionType.REGISTER_CHANGE:
-                if bp.register_name and previous_state: # previous_stateは必ずあるはずだが念のため
-                    if hasattr(current_state, bp.register_name) and hasattr(previous_state, bp.register_name):
-                        if getattr(current_state, bp.register_name) != getattr(previous_state, bp.register_name):
+            elif bp.condition_type == BreakpointConditionType.REGISTER_CHANGE:
+                if bp.register_name and self._previous_state:
+                    if hasattr(current_state, bp.register_name) and hasattr(self._previous_state, bp.register_name):
+                        if getattr(current_state, bp.register_name) != getattr(self._previous_state, bp.register_name):
                             return True
+
         return False
+
+    # _check_register_change_breakpointは_check_other_breakpointsに統合されたため削除可能ですが、
+    # 外部から呼ばれる可能性を考慮して残すか削除するか検討が必要です。
+    # ここでは、よりクリーンな実装のために内部的な統合を優先します。
 
     # @intent:responsibility CPUの実行を1命令分進めます。
     def step_instruction(self) -> Snapshot:
