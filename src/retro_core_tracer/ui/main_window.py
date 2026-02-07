@@ -9,6 +9,8 @@ from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QVBoxLayout, Q
 from PySide6.QtGui import QPalette, QColor, QIcon, QAction, QCloseEvent
 
 from retro_core_tracer.loader.loader import IntelHexLoader
+from retro_core_tracer.config.loader import ConfigLoader
+from retro_core_tracer.config.builder import SystemBuilder
    
 from PySide6.QtCore import Qt, QThread, Signal, Slot
 from .register_view import RegisterView
@@ -17,6 +19,7 @@ from .hex_view import HexView
 from .stack_view import StackView
 from .breakpoint_view import BreakpointView
 from .code_view import CodeView
+from .memory_map_view import MemoryMapView
 from .fonts import get_monospace_font_family
 
 # Backend Imports
@@ -71,6 +74,10 @@ class MainWindow(QMainWindow):
     def _create_menus(self):
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("File")
+
+        self.load_config_action = QAction("Load System Config...", self)
+        self.load_config_action.triggered.connect(self._load_system_config)
+        file_menu.addAction(self.load_config_action)
 
         self.load_hex_action = QAction("Load HEX...", self)
         self.load_hex_action.setShortcut("Ctrl+O")
@@ -183,12 +190,16 @@ class MainWindow(QMainWindow):
         if file_name:
             try:
                 # Clear current memory and reset CPU before loading new program
-                self._setup_backend() 
+                # Note: We keep the current bus configuration (RAM size etc.)
+                # self._setup_backend() 
                 
                 loader = IntelHexLoader()
                 loader.load_intel_hex(file_name, self.bus)
                 self.cpu.reset() # Reset PC and other CPU state
                 
+                # キャッシュされた逆アセンブル内容をクリア（メモリ内容が変わったため）
+                self.code_view.reset_cache()
+
                 # 初期状態を表示（実行はしない）
                 # ダミーのSnapshotを作成して表示更新
                 from retro_core_tracer.core.snapshot import Operation, Metadata
@@ -200,6 +211,42 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Load HEX", f"Successfully loaded {file_name}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load HEX file: {e}")
+
+    @Slot()
+    def _load_system_config(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open System Config", "", "YAML Files (*.yaml *.yml);;All Files (*)")
+        if file_name:
+            try:
+                loader = ConfigLoader()
+                config = loader.load_from_file(file_name)
+                
+                builder = SystemBuilder()
+                self.cpu, self.bus = builder.build_system(config)
+                
+                # Re-initialize Debugger with new CPU
+                self.debugger = Debugger(self.cpu)
+                self.debugger_thread = DebuggerThread(self.debugger)
+                self.debugger_thread.breakpoint_hit.connect(self._update_ui_from_snapshot)
+                
+                # Clear Views
+                self.code_view.reset_cache()
+                
+                # Update Memory Map View
+                self.memory_map_view.update_map(config)
+                
+                # Initial UI update
+                self.cpu.reset()
+                from retro_core_tracer.core.snapshot import Operation, Metadata
+                dummy_op = Operation(opcode_hex="00", mnemonic="NOP", operands=[])
+                dummy_meta = Metadata(cycle_count=0)
+                initial_snapshot = Snapshot(state=self.cpu.get_state(), operation=dummy_op, metadata=dummy_meta)
+                self._update_ui_from_snapshot(initial_snapshot)
+                
+                QMessageBox.information(self, "System Config", f"Successfully loaded system config from {file_name}")
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load system config: {e}")
+
 
 
 
@@ -214,6 +261,8 @@ class MainWindow(QMainWindow):
         tab_widget.addTab(self.hex_view, "HEX View")
         self.breakpoint_view = BreakpointView()
         tab_widget.addTab(self.breakpoint_view, "Breakpoints")
+        self.memory_map_view = MemoryMapView()
+        tab_widget.addTab(self.memory_map_view, "Memory Map")
         nav_dock.setWidget(tab_widget)
         self.addDockWidget(Qt.LeftDockWidgetArea, nav_dock)
 

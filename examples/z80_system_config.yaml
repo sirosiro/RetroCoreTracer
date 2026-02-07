@@ -1,0 +1,16 @@
+architecture: "Z80"
+memory_map:
+  - start: 0x0000
+    end: 0x3FFF
+    type: "ROM"
+    label: "Monitor ROM"
+    permissions: "RO"
+
+  - start: 0x8000
+    end: 0xFFFF
+    type: "RAM"
+    label: "Main RAM"
+
+initial_state:
+  pc: 0x0000
+  sp: 0x0000 # Z80では0x0000からのPUSHで0xFFFFに書き込まれるため実質最高位

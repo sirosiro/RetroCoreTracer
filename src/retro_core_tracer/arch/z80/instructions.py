@@ -139,6 +139,23 @@ def decode_76(opcode: int, bus: Bus, pc: int) -> Operation:
     """HALT命令をデコードします。"""
     return Operation(opcode_hex="76", mnemonic="HALT", operands=[], cycle_count=4, length=1)
 
+# @intent:responsibility LD ss,nn 形式の命令をデコードします。
+def decode_ld_ss_nn(opcode: int, bus: Bus, pc: int) -> Operation:
+    """LD ss,nn命令をデコードします。"""
+    ss_code = (opcode >> 4) & 0b11
+    ss_name = _get_ss_reg_name(ss_code)
+    nn_low = bus.read(pc + 1)
+    nn_high = bus.read(pc + 2)
+    operand_nn = (nn_high << 8) | nn_low
+    return Operation(
+        opcode_hex=f"{opcode:02X}",
+        mnemonic=f"LD {ss_name},nn",
+        operands=[f"${operand_nn:04X}"],
+        cycle_count=10,
+        length=3,
+        operand_bytes=[nn_low, nn_high]
+    )
+
 # @intent:responsibility LD r,n 形式の命令をデコードします。
 def decode_ld_r_n(opcode: int, bus: Bus, pc: int) -> Operation:
     """LD r,n命令をデコードします。"""
@@ -394,6 +411,14 @@ def execute_76(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
     # @intent:responsibility CPUをHALT（停止）状態にします。割り込みが発生するまで停止し続けます。
     state.halted = True
 
+def execute_ld_ss_nn(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    ss_code = (opcode >> 4) & 0b11
+    ss_name = _get_ss_reg_name(ss_code).lower()
+    nn_low, nn_high = operation.operand_bytes
+    value = (nn_high << 8) | nn_low
+    setattr(state, ss_name, value)
+
 def execute_ld_r_n(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
     opcode = int(operation.opcode_hex, 16)
     reg_name = _get_register_name((opcode >> 3) & 0b111)
@@ -475,12 +500,12 @@ DECODE_MAP = {
     0x00: decode_00,
     0x10: decode_10,
     0x76: decode_76,
-    0x21: decode_21,
     0xC3: decode_c3,
     0xC9: decode_c9,
     0xCD: decode_cd,
     0x18: decode_18,
     0xFE: decode_fe,
+    **{op: decode_ld_ss_nn for op in range(0x01, 0x40, 0x10)}, # LD BC/DE/HL/SP, nn
     **{op: decode_add_hl_ss for op in range(0x09, 0x40, 0x10)}, # ADD HL,ss
     **{op: decode_ld_r_n for op in range(0x06, 0x40, 0x08)}, # LD r,n
     **{op: decode_jr_cc_e for op in range(0x20, 0x40, 0x08)},
@@ -498,12 +523,12 @@ EXECUTE_MAP = {
     0x00: execute_00,
     0x10: execute_10,
     0x76: execute_76,
-    0x21: execute_21,
     0xC3: execute_c3,
     0xC9: execute_c9,
     0xCD: execute_cd,
     0x18: execute_18,
     0xFE: execute_fe,
+    **{op: execute_ld_ss_nn for op in range(0x01, 0x40, 0x10)},
     **{op: execute_add_hl_ss for op in range(0x09, 0x40, 0x10)},
     **{op: execute_ld_r_n for op in range(0x06, 0x40, 0x08)},
     **{op: execute_jr_cc_e for op in range(0x20, 0x40, 0x08)},
