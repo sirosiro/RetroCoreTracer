@@ -58,7 +58,7 @@ def decode_add_hl_ss(opcode: int, bus: Bus, pc: int) -> Operation:
         length=1
     )
 
-# @intent:responsibility SUB/ADC/SBC r 形式の命令をデコードします。
+# @intent:responsibility SUB/ADC/SBC/CP r 形式の命令をデコードします。
 def decode_arith_r(opcode: int, bus: Bus, pc: int) -> Operation:
     """SUB/ADC/SBC r命令をデコードします。"""
     src_reg_code = opcode & 0b111
@@ -685,6 +685,7 @@ DECODE_MAP = {
     **{op: decode_inc_dec8 for op in range(0x05, 0x40, 0x08)}, # DEC r
     **{op: decode_add_a_r for op in range(0x80, 0x88)},
     **{op: decode_arith_r for op in range(0x88, 0xA0)}, # ADC, SUB, SBC r
+    **{op: decode_arith_r for op in range(0xB8, 0xC0)}, # CP r
     **{op: decode_logic_r for op in range(0xA0, 0xB8)}, # AND, XOR, OR r
     **{op: decode_push_pop for op in range(0xC5, 0x100, 0x10)}, # PUSH qq
     **{op: decode_push_pop for op in range(0xC1, 0x100, 0x10)}, # POP qq
@@ -712,6 +713,7 @@ EXECUTE_MAP = {
     **{op: execute_inc_dec8 for op in range(0x05, 0x40, 0x08)},
     **{op: execute_add_a_r for op in range(0x80, 0x88)},
     **{op: execute_arith_r for op in range(0x88, 0xA0)},
+    **{op: execute_arith_r for op in range(0xB8, 0xC0)},
     **{op: execute_logic_r for op in range(0xA0, 0xB8)},
     **{op: execute_push_pop for op in range(0xC5, 0x100, 0x10)},
     **{op: execute_push_pop for op in range(0xC1, 0x100, 0x10)},
