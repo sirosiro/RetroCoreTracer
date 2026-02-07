@@ -63,12 +63,17 @@ class MainWindow(QMainWindow):
 
         self._setup_backend()
         self._set_dark_theme()
+        self._create_menus() # Create menu first to populate view menu
         self._create_toolbar()
-        self._create_navigation_pane()
-        self._create_status_inspector()
-        self._create_menus()
+        self._create_dock_widgets()
         
         self._update_ui_state(False) # 初期状態は停止中
+
+        # Connect BreakpointView signals (now that breakpoint_view exists)
+        self.breakpoint_view.breakpoint_added.connect(self._add_breakpoint_to_debugger)
+        self.breakpoint_view.breakpoint_removed.connect(self._remove_breakpoint_from_debugger)
+        # Initial update of BreakpointView
+        self.breakpoint_view.set_breakpoints(self.debugger.get_breakpoints())
 
     # @intent:responsibility メニューバーを作成し、ファイル操作（Intel HEXロード）アクションを追加します。
     def _create_menus(self):
@@ -84,6 +89,9 @@ class MainWindow(QMainWindow):
         self.load_hex_action.triggered.connect(self._load_hex_file)
         file_menu.addAction(self.load_hex_action)
 
+        # View Menu will be populated in _create_dock_widgets
+        self.view_menu = menu_bar.addMenu("View")
+
 
         central_widget = QWidget()
         central_widget.setStyleSheet("background-color: #101010;")
@@ -96,11 +104,8 @@ class MainWindow(QMainWindow):
         
         self.debugger_thread = DebuggerThread(self.debugger)
         self.debugger_thread.breakpoint_hit.connect(self._update_ui_from_snapshot)
-        # Connect BreakpointView signals (now that breakpoint_view exists)
-        self.breakpoint_view.breakpoint_added.connect(self._add_breakpoint_to_debugger)
-        self.breakpoint_view.breakpoint_removed.connect(self._remove_breakpoint_from_debugger)
-        # Initial update of BreakpointView
-        self.breakpoint_view.set_breakpoints(self.debugger.get_breakpoints())
+        
+        # NOTE: BreakpointView signals are connected in __init__ after _create_dock_widgets
 
     # @intent:responsibility デバッグ対象のバックエンドコンポーネントを初期化します。
     def _setup_backend(self):
@@ -250,35 +255,84 @@ class MainWindow(QMainWindow):
 
 
 
-    # @intent:responsibility 左側のナビゲーションペインを作成します。
-    def _create_navigation_pane(self):
-        nav_dock = QDockWidget("Navigation", self)
-        nav_dock.setAllowedAreas(Qt.LeftDockWidgetArea)
-        tab_widget = QTabWidget()
+    # @intent:responsibility 全てのドックウィジェットを作成し、初期レイアウトを設定します。
+    def _create_dock_widgets(self):
+        # --- Left Side Widgets ---
+        
+        # 1. Code View (Assembler)
+        self.code_dock = QDockWidget("Assembler", self)
+        self.code_dock.setObjectName("CodeDock") # For state saving
         self.code_view = CodeView()
-        tab_widget.addTab(self.code_view, "Assembler")
-        self.hex_view = HexView()
-        tab_widget.addTab(self.hex_view, "HEX View")
-        self.breakpoint_view = BreakpointView()
-        tab_widget.addTab(self.breakpoint_view, "Breakpoints")
-        self.memory_map_view = MemoryMapView()
-        tab_widget.addTab(self.memory_map_view, "Memory Map")
-        nav_dock.setWidget(tab_widget)
-        self.addDockWidget(Qt.LeftDockWidgetArea, nav_dock)
+        self.code_dock.setWidget(self.code_view)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.code_dock)
+        self.view_menu.addAction(self.code_dock.toggleViewAction())
 
-    # @intent:responsibility 右側のステータスインスペクタを作成します。
-    def _create_status_inspector(self):
-        status_dock = QDockWidget("Status Inspector", self)
-        status_dock.setAllowedAreas(Qt.RightDockWidgetArea)
-        tab_widget = QTabWidget()
+        # 2. HEX View
+        self.hex_dock = QDockWidget("HEX View", self)
+        self.hex_dock.setObjectName("HexDock")
+        self.hex_view = HexView()
+        self.hex_dock.setWidget(self.hex_view)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.hex_dock)
+        self.view_menu.addAction(self.hex_dock.toggleViewAction())
+
+        # 3. Breakpoints
+        self.breakpoint_dock = QDockWidget("Breakpoints", self)
+        self.breakpoint_dock.setObjectName("BreakpointDock")
+        self.breakpoint_view = BreakpointView()
+        self.breakpoint_dock.setWidget(self.breakpoint_view)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.breakpoint_dock)
+        self.view_menu.addAction(self.breakpoint_dock.toggleViewAction())
+
+        # 4. Memory Map
+        self.memory_map_dock = QDockWidget("Memory Map", self)
+        self.memory_map_dock.setObjectName("MemoryMapDock")
+        self.memory_map_view = MemoryMapView()
+        self.memory_map_dock.setWidget(self.memory_map_view)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.memory_map_dock)
+        self.view_menu.addAction(self.memory_map_dock.toggleViewAction())
+
+        # --- Right Side Widgets ---
+
+        # 5. Registers
+        self.register_dock = QDockWidget("Registers", self)
+        self.register_dock.setObjectName("RegisterDock")
         self.register_view = RegisterView()
-        tab_widget.addTab(self.register_view, "Registers")
+        self.register_dock.setWidget(self.register_view)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.register_dock)
+        self.view_menu.addAction(self.register_dock.toggleViewAction())
+
+        # 6. Flags
+        self.flag_dock = QDockWidget("Flags", self)
+        self.flag_dock.setObjectName("FlagDock")
         self.flag_view = FlagView()
-        tab_widget.addTab(self.flag_view, "Flags")
+        self.flag_dock.setWidget(self.flag_view)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.flag_dock)
+        self.view_menu.addAction(self.flag_dock.toggleViewAction())
+
+        # 7. Stack
+        self.stack_dock = QDockWidget("Stack", self)
+        self.stack_dock.setObjectName("StackDock")
         self.stack_view = StackView()
-        tab_widget.addTab(self.stack_view, "Stack")
-        status_dock.setWidget(tab_widget)
-        self.addDockWidget(Qt.RightDockWidgetArea, status_dock)
+        self.stack_dock.setWidget(self.stack_view)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.stack_dock)
+        self.view_menu.addAction(self.stack_dock.toggleViewAction())
+
+        # --- Initial Layout Configuration ---
+        
+        # Left: Assembler on top, HEX View below it
+        self.splitDockWidget(self.code_dock, self.hex_dock, Qt.Vertical)
+        
+        # Tabify Breakpoints and Memory Map with HEX View (bottom left)
+        self.tabifyDockWidget(self.hex_dock, self.breakpoint_dock)
+        self.tabifyDockWidget(self.hex_dock, self.memory_map_dock)
+        self.hex_dock.raise_() # Bring Hex View to front
+
+        # Right: Registers on top, Stack below it
+        self.splitDockWidget(self.register_dock, self.stack_dock, Qt.Vertical)
+        
+        # Tabify Flags with Registers (top right)
+        self.tabifyDockWidget(self.register_dock, self.flag_dock)
+        self.register_dock.raise_()
 
     # @intent:responsibility アプリケーションにダークテーマのスタイルシートを適用します。
     def _set_dark_theme(self):
@@ -304,7 +358,6 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(f"""
             QWidget {{ font-family: '{font_family}', monospace; font-size: 10pt; }}
             QMainWindow, QToolBar {{ background-color: #1D1D1D; border: none; }}
-            QDockWidget {{ titlebar-close-icon: none; titlebar-float-icon: none; }}
             QDockWidget::title {{ text-align: left; background: #101010; padding: 4px; font-weight: bold; }}
             QTabWidget::pane {{ border-top: 2px solid #2A82DA; }}
             QTabWidget::tab-bar {{ left: 5px; }}

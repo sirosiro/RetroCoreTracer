@@ -86,7 +86,7 @@
 #### 4.2. MainWindow (メインウィンドウ)
 - **責務 (Responsibility):** アプリケーションのメインウィンドウとして機能し、以下の責務を負う。
     - バックエンド（Bus, CPU, Debugger）の初期化と保持。
-    - 各UIコンポーネント（ビュー）のレイアウトと管理。
+    - **ドッキングレイアウトの管理:** 各ビューを `QDockWidget` として管理し、ユーザーが自由に配置（上下分割、タブ化）できる柔軟なレイアウトを提供。
     - ユーザーアクション（メニュー、ツールバー）のハンドリング。
     - デバッガの実行制御（Run, Stop, Step）と、スナップショットに基づく全UIコンポーネントの更新調整。
 - **主要なデータ構造 (Key Data Structures):**
@@ -94,8 +94,10 @@
     - `cpu: Z80Cpu`: エミュレート対象のCPUインスタンス。
     - `debugger: Debugger`: デバッガインスタンス。
     - `debugger_thread: DebuggerThread`: デバッガをバックグラウンドで実行するためのスレッド。
+    - **Dock Widgets:** 各種ビュー（Code, Hex, Stack, Register, etc.）をラップした `QDockWidget` 群。
 - **重要なアルゴリズム (Key Algorithms):**
     - **非同期デバッグ実行:** `DebuggerThread`を使用してデバッガの`run()`メソッドを実行し、UIのフリーズを防ぐ。ブレークポイントヒット時にシグナルを受け取り、UIを更新する。
+    - **動的レイアウト制御:** `splitDockWidget` と `tabifyDockWidget` を使用して初期状態の上下分割とタブ配置を構築。`View` メニューにより各ドックの表示/非表示を切り替え可能。
 
 #### 4.3. HexView (メモリビュー)
 - **責務 (Responsibility):** メモリの内容を16進数およびASCII形式で表示する。指定されたアドレス（例：PC）をハイライト表示する機能を持つ。
