@@ -5,11 +5,12 @@ Z80命令セットの定義と実行ロジック。
 このモジュールはZ80 CPUの各命令のデコード方法と、
 CPUの状態をどのように変更するかを定義します。
 """
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 from retro_core_tracer.arch.z80.state import Z80CpuState
 from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.core.snapshot import Operation
+from .alu import update_flags_add8, update_flags_sub8, update_flags_logic8, update_flags_inc_dec8
 
 # Helper functions for register mapping
 REGISTER_CODES = {
@@ -17,86 +18,53 @@ REGISTER_CODES = {
     0b100: "H", 0b101: "L", 0b110: "(HL)", 0b111: "A"
 }
 
-REGISTER_MAP = {
-    "B": lambda state: state.b, "C": lambda state: state.c,
-    "D": lambda state: state.d, "E": lambda state: state.e,
-    "H": lambda state: state.h, "L": lambda state: state.l,
-    "A": lambda state: state.a,
-}
-
-REGISTER_SET_MAP = {
-    "B": lambda state, value: setattr(state, 'b', value),
-    "C": lambda state, value: setattr(state, 'c', value),
-    "D": lambda state, value: setattr(state, 'd', value),
-    "E": lambda state, value: setattr(state, 'e', value),
-    "H": lambda state, value: setattr(state, 'h', value),
-    "L": lambda state, value: setattr(state, 'l', value),
-    "A": lambda state, value: setattr(state, 'a', value),
-}
-
+# @intent:utility_function 指定されたコードに対応するレジスタ名を返します。
 def _get_register_name(code: int) -> str:
     return REGISTER_CODES.get(code, "UNKNOWN_REG")
 
+# @intent:utility_function レジスタ名（または(HL)）に基づいて現在の値を取得します。
 def _get_register_value(state: Z80CpuState, bus: Bus, reg_name: str) -> int:
     if reg_name == "(HL)":
         return bus.read(state.hl)
-    return REGISTER_MAP[reg_name](state)
+    return getattr(state, reg_name.lower())
 
+# @intent:utility_function レジスタ名（または(HL)）に値を設定します。
 def _set_register_value(state: Z80CpuState, bus: Bus, reg_name: str, value: int) -> None:
     if reg_name == "(HL)":
-        bus.write(state.hl, value)
+        bus.write(state.hl, value & 0xFF)
     else:
-        REGISTER_SET_MAP[reg_name](state, value)
+        setattr(state, reg_name.lower(), value & 0xFF)
 
-# @intent:utility_function Z80のS (Sign) と Z (Zero) フラグを設定します。
-def _set_sz_flags(state: Z80CpuState, value: int) -> None:
-    state.flag_s = (value & 0x80) != 0  # Bit 7 (MSB) determines sign
-    state.flag_z = (value == 0)
-
-# @intent:utility_function Z80のPV (Parity/Overflow) フラグをパリティに基づいて設定します。
-def _set_pv_flag_parity(state: Z80CpuState, value: int) -> None:
-    # Parity is set if the number of set bits is even
-    # Z80 PV flag is Parity for logical operations, Overflow for arithmetic
-    # For ADD/SUB, it's Overflow, for AND/OR/XOR, it's Parity
-    # For ADD A,r it's Overflow. But for now, let's use parity as a placeholder for simpler instructions.
-    # We will refine this for overflow later.
-    parity = 0
-    for i in range(8):
-        if (value >> i) & 1:
-            parity += 1
-    state.flag_pv = (parity % 2) == 0 # Even parity
-
+# --- Decoding Functions ---
 
 # @intent:responsibility オペコード0x00 (NOP)をデコードします。
 def decode_00(opcode: int, bus: Bus, pc: int) -> Operation:
     """NOP命令をデコードします。"""
-    # NOPは1バイト命令でオペランドなし
     return Operation(opcode_hex="00", mnemonic="NOP", operands=[], cycle_count=4, length=1)
 
 # @intent:responsibility オペコード0x76 (HALT)をデコードします。
 def decode_76(opcode: int, bus: Bus, pc: int) -> Operation:
     """HALT命令をデコードします。"""
-    # HALTは1バイト命令でオペランドなし
     return Operation(opcode_hex="76", mnemonic="HALT", operands=[], cycle_count=4, length=1)
 
-# @intent:responsibility オペコード0x3E (LD A,n)をデコードします。
-def decode_3e(opcode: int, bus: Bus, pc: int) -> Operation:
-    """LD A,n命令をデコードします。"""
-    # LD A,nは2バイト命令 (0x3E, n)。nは直後のバイト
+# @intent:responsibility LD r,n 形式の命令をデコードします。
+def decode_ld_r_n(opcode: int, bus: Bus, pc: int) -> Operation:
+    """LD r,n命令をデコードします。"""
+    reg_code = (opcode >> 3) & 0b111
+    reg_name = _get_register_name(reg_code)
     operand_n = bus.read(pc + 1)
     return Operation(
-        opcode_hex="3E",
-        mnemonic="LD A,n",
+        opcode_hex=f"{opcode:02X}",
+        mnemonic=f"LD {reg_name},n",
         operands=[f"${operand_n:02X}"],
-        cycle_count=7, # 仮のサイクル数
-        length=2, # 1バイトオペコード + 1バイトオペランド
+        cycle_count=7 if reg_name != "(HL)" else 10,
+        length=2,
         operand_bytes=[operand_n]
     )
 
 # @intent:responsibility オペコード0x21 (LD HL,nn)をデコードします。
 def decode_21(opcode: int, bus: Bus, pc: int) -> Operation:
     """LD HL,nn命令をデコードします。"""
-    # LD HL,nnは3バイト命令 (0x21, nn_low, nn_high)。nnは直後2バイトのリトルエンディアン
     nn_low = bus.read(pc + 1)
     nn_high = bus.read(pc + 2)
     operand_nn = (nn_high << 8) | nn_low
@@ -104,71 +72,250 @@ def decode_21(opcode: int, bus: Bus, pc: int) -> Operation:
         opcode_hex="21",
         mnemonic="LD HL,nn",
         operands=[f"${operand_nn:04X}"],
-        cycle_count=10, # 仮のサイクル数
-        length=3, # 1バイトオペコード + 2バイトオペランド
+        cycle_count=10,
+        length=3,
         operand_bytes=[nn_low, nn_high]
     )
 
-
-# @intent:responsibility オペコード0x77 (LD (HL),A)をデコードします。
-def decode_77(opcode: int, bus: Bus, pc: int) -> Operation:
-    """LD (HL),A命令をデコードします。"""
-    return Operation(opcode_hex="77", mnemonic="LD (HL),A", operands=[], cycle_count=7, length=1)
-
-# @intent:responsibility オペコード0x7E (LD A,(HL))をデコードします。
-def decode_7e(opcode: int, bus: Bus, pc: int) -> Operation:
-    """LD A,(HL)命令をデコードします。"""
-    return Operation(opcode_hex="7E", mnemonic="LD A,(HL)", operands=[], cycle_count=7, length=1)
-
 # @intent:responsibility LD r,r'形式の命令をデコードします。
 def decode_ld_r_r_prime(opcode: int, bus: Bus, pc: int) -> Operation:
-    """汎用的なLD r,r' (Load Register to Register)命令をデコードします。"""
+    """汎用的なLD r,r'命令をデコードします。"""
     dest_reg_code = (opcode >> 3) & 0b111
     src_reg_code = opcode & 0b111
-    
     dest_reg_name = _get_register_name(dest_reg_code)
     src_reg_name = _get_register_name(src_reg_code)
+    return Operation(
+        opcode_hex=f"{opcode:02X}",
+        mnemonic=f"LD {dest_reg_name},{src_reg_name}",
+        operands=[],
+        cycle_count=4 if "(HL)" not in [dest_reg_name, src_reg_name] else 7,
+        length=1
+    )
 
-    mnemonic = f"LD {dest_reg_name},{src_reg_name}"
-    
+# @intent:responsibility オペコード0xC3 (JP nn) をデコードします。
+def decode_c3(opcode: int, bus: Bus, pc: int) -> Operation:
+    """JP nn命令をデコードします。"""
+    nn_low = bus.read(pc + 1)
+    nn_high = bus.read(pc + 2)
+    nn = (nn_high << 8) | nn_low
+    return Operation(
+        opcode_hex="C3",
+        mnemonic="JP nn",
+        operands=[f"${nn:04X}"],
+        cycle_count=10,
+        length=3,
+        operand_bytes=[nn_low, nn_high]
+    )
+
+# @intent:responsibility オペコード0x18 (JR e) をデコードします。
+def decode_18(opcode: int, bus: Bus, pc: int) -> Operation:
+    """JR e命令をデコードします。"""
+    offset = bus.read(pc + 1)
+    # Signed 8-bit offset
+    if offset >= 128:
+        offset -= 256
+    target = (pc + 2 + offset) & 0xFFFF
+    return Operation(
+        opcode_hex="18",
+        mnemonic="JR e",
+        operands=[f"${target:04X}"],
+        cycle_count=12,
+        length=2,
+        operand_bytes=[bus.read(pc + 1)]
+    )
+
+# @intent:responsibility INC r / DEC r 形式の命令をデコードします。
+def decode_inc_dec8(opcode: int, bus: Bus, pc: int) -> Operation:
+    """8ビットのINC/DEC命令をデコードします。"""
+    reg_code = (opcode >> 3) & 0b111
+    reg_name = _get_register_name(reg_code)
+    is_inc = (opcode & 1) == 0
+    mnemonic = f"{'INC' if is_inc else 'DEC'} {reg_name}"
     return Operation(
         opcode_hex=f"{opcode:02X}",
         mnemonic=mnemonic,
         operands=[],
-        cycle_count=4 if "(HL)" not in [dest_reg_name, src_reg_name] else 7, # 汎用的なサイクル数
+        cycle_count=4 if reg_name != "(HL)" else 11,
         length=1
     )
 
-# @intent:responsibility ADD A,r形式の命令をデコードします。
+# @intent:responsibility ADD A,r 形式の命令をデコードします。
 def decode_add_a_r(opcode: int, bus: Bus, pc: int) -> Operation:
-    """汎用的なADD A,r (Add Register to Accumulator)命令をデコードします。"""
+    """ADD A,r命令をデコードします。"""
     src_reg_code = opcode & 0b111
     src_reg_name = _get_register_name(src_reg_code)
-    
-    mnemonic = f"ADD A,{src_reg_name}"
-    
     return Operation(
         opcode_hex=f"{opcode:02X}",
-        mnemonic=mnemonic,
+        mnemonic=f"ADD A,{src_reg_name}",
         operands=[],
-        cycle_count=4 if src_reg_name != "(HL)" else 7, # 汎用的なサイクル数
+        cycle_count=4 if src_reg_name != "(HL)" else 7,
         length=1
     )
 
-# Z80の主要なデコード関数へのマッピング
-# @intent:data_structure Z80のオペコードとデコード関数をマッピングするテーブル。
+# @intent:responsibility オペコード0xFE (CP n) をデコードします。
+def decode_fe(opcode: int, bus: Bus, pc: int) -> Operation:
+    """CP n命令をデコードします。"""
+    n = bus.read(pc + 1)
+    return Operation(
+        opcode_hex="FE",
+        mnemonic="CP n",
+        operands=[f"${n:02X}"],
+        cycle_count=7,
+        length=2,
+        operand_bytes=[n]
+    )
+
+# @intent:responsibility オペコード0x10 (DJNZ e) をデコードします。
+def decode_10(opcode: int, bus: Bus, pc: int) -> Operation:
+    """DJNZ e命令をデコードします。"""
+    offset = bus.read(pc + 1)
+    if offset >= 128:
+        offset -= 256
+    target = (pc + 2 + offset) & 0xFFFF
+    return Operation(
+        opcode_hex="10",
+        mnemonic="DJNZ e",
+        operands=[f"${target:04X}"],
+        cycle_count=13, # 13 if jump, 8 if no jump
+        length=2,
+        operand_bytes=[bus.read(pc + 1)]
+    )
+
+# @intent:responsibility JR cc,e 形式の命令をデコードします。
+def decode_jr_cc_e(opcode: int, bus: Bus, pc: int) -> Operation:
+    """条件付き相対ジャンプ命令をデコードします。"""
+    cc_code = (opcode >> 3) & 0b11
+    cc_map = {0: "NZ", 1: "Z", 2: "NC", 3: "C"}
+    cc = cc_map[cc_code]
+    offset = bus.read(pc + 1)
+    if offset >= 128:
+        offset -= 256
+    target = (pc + 2 + offset) & 0xFFFF
+    return Operation(
+        opcode_hex=f"{opcode:02X}",
+        mnemonic=f"JR {cc},e",
+        operands=[f"${target:04X}"],
+        cycle_count=12,
+        length=2,
+        operand_bytes=[bus.read(pc + 1)]
+    )
+
+# --- Execution Functions ---
+
+def execute_00(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    pass
+
+def execute_76(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    # TODO: Implement HALT state
+    pass
+
+def execute_ld_r_n(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    reg_name = _get_register_name((opcode >> 3) & 0b111)
+    value = operation.operand_bytes[0]
+    _set_register_value(state, bus, reg_name, value)
+
+def execute_21(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    low, high = operation.operand_bytes
+    state.hl = (high << 8) | low
+
+def execute_ld_r_r_prime(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    dest_name = _get_register_name((opcode >> 3) & 0b111)
+    src_name = _get_register_name(opcode & 0b111)
+    val = _get_register_value(state, bus, src_name)
+    _set_register_value(state, bus, dest_name, val)
+
+def execute_c3(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    low, high = operation.operand_bytes
+    state.pc = (high << 8) | low
+
+def execute_18(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    offset = operation.operand_bytes[0]
+    if offset >= 128:
+        offset -= 256
+    # Note: PC is already incremented by operation.length before execution in Z80Cpu.step
+    state.pc = (state.pc + offset) & 0xFFFF
+
+def execute_inc_dec8(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    reg_name = _get_register_name((opcode >> 3) & 0b111)
+    is_inc = (opcode & 1) == 0
+    val = _get_register_value(state, bus, reg_name)
+    result = (val + 1) if is_inc else (val - 1)
+    update_flags_inc_dec8(state, val, result, is_inc)
+    _set_register_value(state, bus, reg_name, result & 0xFF)
+
+def execute_add_a_r(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    src_name = _get_register_name(opcode & 0b111)
+    val = _get_register_value(state, bus, src_name)
+    result = state.a + val
+    update_flags_add8(state, state.a, val, result)
+    state.a = result & 0xFF
+
+def execute_fe(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    n = operation.operand_bytes[0]
+    result = state.a - n
+    update_flags_sub8(state, state.a, n, result)
+    # CP does not store the result
+
+def execute_10(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    state.b = (state.b - 1) & 0xFF
+    if state.b != 0:
+        offset = operation.operand_bytes[0]
+        if offset >= 128:
+            offset -= 256
+        state.pc = (state.pc + offset) & 0xFFFF
+
+def execute_jr_cc_e(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    opcode = int(operation.opcode_hex, 16)
+    cc_code = (opcode >> 3) & 0b11
+    
+    condition = False
+    if cc_code == 0: condition = not state.flag_z # NZ
+    elif cc_code == 1: condition = state.flag_z     # Z
+    elif cc_code == 2: condition = not state.flag_c # NC
+    elif cc_code == 3: condition = state.flag_c     # C
+    
+    if condition:
+        offset = operation.operand_bytes[0]
+        if offset >= 128:
+            offset -= 256
+        state.pc = (state.pc + offset) & 0xFFFF
+
+# --- Tables ---
+
 DECODE_MAP = {
-    # ADD A,r instructions (0x80 to 0x87)
-    **{op: decode_add_a_r for op in range(0x80, 0x88)},
-    # LD r,r' instructions (0x40 to 0x7F)
-    # Filter out 0x76 (HALT)
+    0x00: decode_00,
+    0x10: decode_10,
+    0x76: decode_76,
+    0x21: decode_21,
+    0xC3: decode_c3,
+    0x18: decode_18,
+    0xFE: decode_fe,
+    **{op: decode_ld_r_n for op in range(0x06, 0x40, 0x08)}, # LD r,n
+    **{op: decode_jr_cc_e for op in range(0x20, 0x40, 0x08)},
     **{op: decode_ld_r_r_prime for op in range(0x40, 0x80) if op != 0x76},
-    0x00: decode_00, # NOP
-    0x76: decode_76, # HALT (overwrites generic if in range)
-    0x3E: decode_3e, # LD A,n
-    0x21: decode_21, # LD HL,nn
-    0x77: decode_77, # LD (HL),A (overwrites generic if in range)
-    0x7E: decode_7e, # LD A,(HL) (overwrites generic if in range)
+    **{op: decode_inc_dec8 for op in range(0x04, 0x40, 0x08)}, # INC r
+    **{op: decode_inc_dec8 for op in range(0x05, 0x40, 0x08)}, # DEC r
+    **{op: decode_add_a_r for op in range(0x80, 0x88)},
+}
+
+EXECUTE_MAP = {
+    0x00: execute_00,
+    0x10: execute_10,
+    0x76: execute_76,
+    0x21: execute_21,
+    0xC3: execute_c3,
+    0x18: execute_18,
+    0xFE: execute_fe,
+    **{op: execute_ld_r_n for op in range(0x06, 0x40, 0x08)},
+    **{op: execute_jr_cc_e for op in range(0x20, 0x40, 0x08)},
+    **{op: execute_ld_r_r_prime for op in range(0x40, 0x80) if op != 0x76},
+    **{op: execute_inc_dec8 for op in range(0x04, 0x40, 0x08)},
+    **{op: execute_inc_dec8 for op in range(0x05, 0x40, 0x08)},
+    **{op: execute_add_a_r for op in range(0x80, 0x88)},
 }
 
 # @intent:responsibility 与えられたオペコードをZ80の命令としてデコードします。
@@ -180,102 +327,8 @@ def decode_opcode(opcode: int, bus: Bus, pc: int) -> Operation:
     """
     decoder = DECODE_MAP.get(opcode)
     if decoder:
-        return decoder(opcode, bus, pc) # Pass opcode to decoder
-    else:
-        # 未知のオペコードの場合、それ自体をオペランドとして扱い、1バイト命令とする
-        return Operation(opcode_hex=f"{opcode:02X}", mnemonic="UNKNOWN", operands=[f"${opcode:02X}"], cycle_count=4, length=1)
-
-
-# @intent:responsibility オペコード0x00 (NOP)を実行します。
-def execute_00(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
-    """NOP命令を実行します。何もしません。"""
-    pass # NOPは何もしない
-
-# @intent:responsibility オペコード0x76 (HALT)を実行します。
-def execute_76(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
-    """HALT命令を実行します。"""
-    # TODO: CPUをHALT状態にするロジックを実装
-    pass
-
-# @intent:responsibility オペコード0x3E (LD A,n)を実行します。
-def execute_3e(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
-    """LD A,n命令を実行します。"""
-    if not operation.operand_bytes:
-        raise ValueError("LD A,n instruction requires an operand byte.")
-    value_n = operation.operand_bytes[0]
-    state.a = value_n
-
-# @intent:responsibility オペコード0x21 (LD HL,nn)を実行します。
-def execute_21(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
-    """LD HL,nn命令を実行します。"""
-    if not operation.operand_bytes or len(operation.operand_bytes) < 2:
-        raise ValueError("LD HL,nn instruction requires two operand bytes.")
-    nn_low = operation.operand_bytes[0]
-    nn_high = operation.operand_bytes[1]
-    value_nn = (nn_high << 8) | nn_low
-    state.hl = value_nn
-
-
-# @intent:responsibility オペコード0x77 (LD (HL),A)を実行します。
-def execute_77(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
-    """LD (HL),A命令を実行します。Aレジスタの値をHLレジスタが指すアドレスに書き込みます。"""
-    bus.write(state.hl, state.a)
-
-# @intent:responsibility オペコード0x7E (LD A,(HL))を実行します。
-def execute_7e(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
-    """LD A,(HL)命令を実行します。HLレジスタが指すアドレスから値を読み込み、Aレジスタに格納します。"""
-    state.a = bus.read(state.hl)
-
-# @intent:responsibility LD r,r'形式の命令を実行します。
-def execute_ld_r_r_prime(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
-    """汎用的なLD r,r' (Load Register to Register)命令を実行します。"""
-    opcode = int(operation.opcode_hex, 16)
-    dest_reg_code = (opcode >> 3) & 0b111
-    src_reg_code = opcode & 0b111
-    
-    dest_reg_name = _get_register_name(dest_reg_code)
-    src_reg_name = _get_register_name(src_reg_code)
-
-    value = _get_register_value(state, bus, src_reg_name)
-    _set_register_value(state, bus, dest_reg_name, value)
-
-# @intent:responsibility ADD A,r形式の命令を実行します。
-def execute_add_a_r(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
-    """汎用的なADD A,r (Add Register to Accumulator)命令を実行します。"""
-    opcode = int(operation.opcode_hex, 16)
-    src_reg_code = opcode & 0b111
-    src_reg_name = _get_register_name(src_reg_code)
-    
-    operand_value = _get_register_value(state, bus, src_reg_name)
-    
-    # Perform 8-bit addition
-    result = state.a + operand_value
-    
-    # Update flags
-    _set_sz_flags(state, result & 0xFF) # S, Z flags
-    _set_pv_flag_parity(state, result & 0xFF) # PV flag (parity for now, will refine for overflow)
-    state.flag_h = ((state.a & 0x0F) + (operand_value & 0x0F)) > 0x0F # Half-carry
-    state.flag_n = False # N flag is reset for ADD
-    state.flag_c = result > 0xFF # Carry flag
-    
-    state.a = result & 0xFF # Store 8-bit result in A
-
-
-# Z80の主要な実行関数へのマッピング
-# @intent:data_structure Z80のオペコードと実行関数をマッピングするテーブル。
-EXECUTE_MAP = {
-    # ADD A,r instructions (0x80 to 0x87)
-    **{op: execute_add_a_r for op in range(0x80, 0x88)},
-    # LD r,r' instructions (0x40 to 0x7F)
-    # Filter out 0x76 (HALT)
-    **{op: execute_ld_r_r_prime for op in range(0x40, 0x80) if op != 0x76},
-    0x00: execute_00,
-    0x76: execute_76, # HALT (overwrites generic if in range)
-    0x3E: execute_3e,
-    0x21: execute_21,
-    0x77: execute_77, # LD (HL),A (overwrites generic if in range)
-    0x7E: execute_7e, # LD A,(HL) (overwrites generic if in range)
-}
+        return decoder(opcode, bus, pc)
+    return Operation(opcode_hex=f"{opcode:02X}", mnemonic="UNKNOWN", operands=[f"${opcode:02X}"], cycle_count=4, length=1)
 
 # @intent:responsibility デコードされたZ80命令を実行し、CPUの状態を変更します。
 # @intent:pre-condition `operation`は有効なOperationオブジェクトである必要があります。
@@ -283,9 +336,6 @@ def execute_instruction(operation: Operation, state: Z80CpuState, bus: Bus) -> N
     """
     デコードされたZ80命令を実行し、CPUの状態を変更します。
     """
-    executor = EXECUTE_MAP.get(int(operation.opcode_hex, 16)) # オペコードHEXをintに変換
+    executor = EXECUTE_MAP.get(int(operation.opcode_hex, 16))
     if executor:
         executor(state, bus, operation)
-    else:
-        # 未知のオペコードの場合、何もしない（既にUNKNOWNとしてデコード済みのため）
-        pass

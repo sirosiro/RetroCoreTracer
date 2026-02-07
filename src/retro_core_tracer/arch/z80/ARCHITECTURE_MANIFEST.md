@@ -60,16 +60,32 @@
 - **Consequences:** `Z80State`が`CpuState`を継承し、Z80固有のレジスタとフラグ管理ロジックを持つことになる。
 -->
 
-### 3. AIとの協調に関する指針 (AI Collaboration Policy)
+### 3. モジュール構成 (Module Structure)
 
-*このセクションは、AIがどう振る舞うべきかの指針を記述します。*
+*このセクションは、モジュール内部の構造を定義します。*
 
-- **未知の問題への対処:** この憲章に記載のない問題に直面した際、AIは`DESIGN_PHILOSOPHY.md`の根本思想に立ち返り、複数の選択肢とそれぞれのトレードオフを提示し、人間の判断を仰いでください。
-- **戦略（憲章）と戦術（コメント）の連携:** この憲章（戦略）と、コード内に記述されるインテント・コメント（戦術）は、一貫性を保つべきです。AIは、コード生成時にインテント・コメントの草案を提案する責務を負います。
+- **`cpu.py`**: `AbstractCpu` を継承した Z80 CPU のメイン実装。
+- **`state.py`**: Z80 固有のレジスタとフラグの状態定義。
+- **`instructions.py`**: Z80 命令のデコードと実行ロジック。
+- **`alu.py`**: 算術論理演算（ALU）およびフラグ更新の共通ロジック。
+- **`disassembler.py`**: メモリ上のバイナリをニーモニックに変換するロジック。
 
 ### 4. コンポーネント設計仕様 (Component Design Specifications)
+---
+(Skipping existing 4.1, 4.2, 4.3 for brevity)
+---
+#### 4.4. Z80Alu (ALUおよびフラグ計算、`alu.py`に実装)
+- **責務 (Responsibility):** Z80の算術・論理演算の結果に基づいて、フラグレジスタ（S, Z, H, P/V, N, C）を正確に計算・更新するロジックを集約する。
+- **提供するAPI (Public API):**
+    - `update_flags_add8(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 8ビット加算のフラグ更新。
+    - `update_flags_sub8(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 8ビット減算のフラグ更新。
+    - `update_flags_logic8(state: Z80CpuState, result: int) -> None`: 8ビット論理演算のフラグ更新。
 
-*このセクションは、このマニフェストを元に、AIが人間と協調して機能的に同等なコードを再実装できるように、システムの主要コンポーネントの「設計仕様」を定義します。このセクションは、まず空のプレースホルダーとして生成され、人間とAIの対話を通じて合意形成をしながら埋めていくことを想定しています。単なる要約に留めず、第三者がマニフェストを読むだけで具体的な実装をイメージできるレベルまで、各コンポーネントの責務、APIのシグネチャ（引数、戻り値を含む）、データ構造、重要なアルゴリズム、状態遷移を詳細に記述することが極めて重要です。*
+#### 4.5. Z80Disassembler (逆アセンブラ、`disassembler.py`に実装)
+- **責務 (Responsibility):** 指定されたメモリ範囲のバイナリデータを解析し、Z80アセンブリ言語のニーモニック形式に変換する。
+- **提供するAPI (Public API):**
+    - `disassemble(bus: Bus, start_addr: int, length: int) -> List[str]`: メモリ上のデータを読み取り、ニーモニックのリストを返す。
+
 
 #### 4.1. Z80CpuState (データクラス)
 - **責務 (Responsibility):** `CpuState`を拡張し、Z80 CPU固有の全てのレジスタ（主レジスタ、代替レジスタ、インデックスレジスタ、特殊用途レジスタ）とフラグビットの状態を保持する。

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 from dataclasses import replace
+import time
 
 from retro_core_tracer.core.cpu import AbstractCpu
 from retro_core_tracer.core.snapshot import Snapshot, BusAccessType, BusAccess
@@ -47,7 +48,8 @@ class Debugger:
         self._breakpoints: List[BreakpointCondition] = []
         self._running: bool = False # 連続実行中かどうか
         # REGISTER_CHANGEのため、前回のCPU状態を保持する必要がある
-        self._previous_state = self._cpu.get_state() # SnapshotではなくCpuStateを保持するのが適切かも
+        self._previous_state = self._cpu.get_state() 
+        self._last_snapshot: Optional[Snapshot] = None # 最後に実行したSnapshotを保持
 
     # @intent:responsibility ブレークポイントを追加します。
     def add_breakpoint(self, condition: BreakpointCondition) -> None:
@@ -124,8 +126,15 @@ class Debugger:
         self._previous_state = replace(self._cpu.get_state()) # 命令実行前の状態をコピー
         
         snapshot = self._cpu.step() # 命令を実行し、その結果のSnapshotを取得
+        self._last_snapshot = snapshot
         
         return snapshot
+
+    def get_last_snapshot(self) -> Optional[Snapshot]:
+        """
+        最後に実行されたステップのSnapshotを返します。
+        """
+        return self._last_snapshot
 
     # @intent:responsibility ブレークポイントにヒットするか、停止するまでCPUの実行を継続します。
     # @intent:rationale PC_MATCHブレークポイントは命令実行前にチェックされ、
@@ -136,15 +145,42 @@ class Debugger:
         stop()が呼び出されるまで繰り返します。
         """
         self._running = True
+        print("Debugger: Run loop started") # DEBUG
+
+        # 現在のPC位置にブレークポイントがある場合、そこから抜け出すために1ステップ実行する
+        current_pc = self._cpu.get_state().pc
+        for bp in self._breakpoints:
+            if bp.condition_type == BreakpointConditionType.PC_MATCH and bp.value == current_pc:
+                print(f"Debugger: Stepping over breakpoint at {current_pc:#04x}")
+                self.step_instruction()
+                # HALTチェックなどをここでもやるべきだが、とりあえずループ内でキャッチされる
+                break
+
         while self._running:
+            # PythonのGIL(Global Interpreter Lock)を一時的に解放し、
+            # メインスレッド（GUI）が停止要求(stop)を処理したり、イベントを処理したりする時間を確保する。
+            # time.sleep(0)はOSに対してタイムスライスを譲る動作となる。
+            time.sleep(0)
+            
+            # print(f"Debugger: Looping... running={self._running}, PC={self._cpu.get_state().pc:04X}") # DEBUG (Too verbose, enable if needed)
+
             # PC_MATCHブレークポイントを命令実行前にチェック
+            current_pc = self._cpu.get_state().pc
             for bp in self._breakpoints:
-                if bp.condition_type == BreakpointConditionType.PC_MATCH and bp.value == self._cpu.get_state().pc:
-                    self._running = False
-                    print(f"Breakpoint hit at PC: {self._cpu.get_state().pc:#06x}")
-                    return # ブレークポイントヒットで停止
+                if bp.condition_type == BreakpointConditionType.PC_MATCH:
+                    # print(f"Checking BP: PC={current_pc:#04x} BP={bp.value:#04x}") # DEBUG
+                    if bp.value == current_pc:
+                        self._running = False
+                        print(f"Breakpoint hit at PC: {current_pc:#06x}")
+                        return # ブレークポイントヒットで停止
 
             snapshot = self.step_instruction()
+
+            # HALT命令が実行されたら停止する
+            if snapshot.operation.mnemonic == "HALT":
+                self._running = False
+                print("Debugger: HALT instruction executed. Stopping.")
+                return
 
             # PC_MATCH以外のブレークポイントをチェック
             if self._check_other_breakpoints(snapshot):
@@ -157,4 +193,5 @@ class Debugger:
         """
         CPUの連続実行を停止します。run()メソッド内でチェックされます。
         """
+        print("Debugger: Stop requested") # DEBUG
         self._running = False

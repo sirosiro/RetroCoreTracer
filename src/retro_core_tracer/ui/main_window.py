@@ -6,7 +6,7 @@
 import sys
 
 from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QVBoxLayout, QDockWidget, QTabWidget, QToolBar, QLabel, QFileDialog, QMessageBox
-from PySide6.QtGui import QPalette, QColor, QIcon, QAction
+from PySide6.QtGui import QPalette, QColor, QIcon, QAction, QCloseEvent
 
 from retro_core_tracer.loader.loader import IntelHexLoader
    
@@ -16,6 +16,7 @@ from .flag_view import FlagView
 from .hex_view import HexView
 from .stack_view import StackView
 from .breakpoint_view import BreakpointView
+from .code_view import CodeView
 from .fonts import get_monospace_font_family
 
 # Backend Imports
@@ -39,9 +40,10 @@ class DebuggerThread(QThread):
         # run()はブレークポイントで停止する
         self.debugger.run()
         # run()が終了した（ブレークポイントにヒットした）ことを通知
-        # run()はsnapshotを返さないので、最後の状態を取得して通知する
-        last_snapshot = self.debugger.step_instruction() # HACK: run()の最後の状態を取得
-        self.breakpoint_hit.emit(last_snapshot)
+        # run()が終わった時点での最後のSnapshotを取得する
+        last_snapshot = self.debugger.get_last_snapshot()
+        if last_snapshot:
+            self.breakpoint_hit.emit(last_snapshot)
 
 
 # @intent:responsibility アプリケーションのメインウィンドウを定義し、UIの主要なコンポーネントを組み立てます。
@@ -62,16 +64,18 @@ class MainWindow(QMainWindow):
         self._create_navigation_pane()
         self._create_status_inspector()
         self._create_menus()
+        
+        self._update_ui_state(False) # 初期状態は停止中
 
     # @intent:responsibility メニューバーを作成し、ファイル操作（Intel HEXロード）アクションを追加します。
     def _create_menus(self):
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("File")
 
-        load_hex_action = QAction("Load HEX...", self)
-        load_hex_action.setShortcut("Ctrl+O")
-        load_hex_action.triggered.connect(self._load_hex_file)
-        file_menu.addAction(load_hex_action)
+        self.load_hex_action = QAction("Load HEX...", self)
+        self.load_hex_action.setShortcut("Ctrl+O")
+        self.load_hex_action.triggered.connect(self._load_hex_file)
+        file_menu.addAction(self.load_hex_action)
 
 
         central_widget = QWidget()
@@ -98,45 +102,45 @@ class MainWindow(QMainWindow):
         self.bus.register_device(0x0000, 0xFFFF, ram)
         self.cpu = Z80Cpu(self.bus) # Make cpu an instance variable
         self.debugger = Debugger(self.cpu)
-        # HACK: テスト用の一時的なコードをメモリに書き込む
-        # LD A, 0xAA (0x3E 0xAA)
-        self.bus.write(0x0000, 0x3E)
-        self.bus.write(0x0001, 0xAA)
-        # LD B, A (0x47)
-        self.bus.write(0x0002, 0x47)
-        # LD C, B (0x48)
-        self.bus.write(0x0003, 0x48)
-        # LD H, C (0x61)
-        self.bus.write(0x0004, 0x61)
-        # LD L, D (0x6A) (D is 0x00, so L will be 0x00)
-        self.bus.write(0x0005, 0x6A)
-        # NOP (0x00)
-        self.bus.write(0x0006, 0x00)
-        # HALT (0x76)
-        self.bus.write(0x0007, 0x76)
         
+        # DebuggerThreadを新しいデバッガインスタンスで再作成
+        # 注: 以前のスレッドが実行中の場合は停止する必要がありますが、
+        # Load HEXは停止中に行われる前提です。
+        self.debugger_thread = DebuggerThread(self.debugger)
+        self.debugger_thread.breakpoint_hit.connect(self._update_ui_from_snapshot)
+
+        # HACK: テスト用の一時的なコードをメモリに書き込む
+        # ... (HACK code remains) ...
 
     # @intent:responsibility 実行制御用のツールバーを作成します。
     def _create_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
         self.addToolBar(toolbar)
 
-        # アクションの作成（アイコンは後で設定）
-        run_action = QAction("Run", self)
-        run_action.triggered.connect(self._run_debugger)
-        toolbar.addAction(run_action)
+        # アクションの作成
+        self.run_action = QAction("Run", self)
+        self.run_action.triggered.connect(self._run_debugger)
+        toolbar.addAction(self.run_action)
 
-        stop_action = QAction("Stop", self)
-        stop_action.triggered.connect(self._stop_debugger)
-        toolbar.addAction(stop_action)
+        self.stop_action = QAction("Stop", self)
+        self.stop_action.triggered.connect(self._stop_debugger)
+        toolbar.addAction(self.stop_action)
         
-        step_action = QAction("Step", self)
-        step_action.triggered.connect(self._step_debugger)
-        toolbar.addAction(step_action)
+        self.step_action = QAction("Step", self)
+        self.step_action.triggered.connect(self._step_debugger)
+        toolbar.addAction(self.step_action)
+
+    # @intent:responsibility 実行状態に応じてUIコンポーネントの有効/無効を切り替えます。
+    def _update_ui_state(self, is_running: bool):
+        self.load_hex_action.setEnabled(not is_running)
+        self.run_action.setEnabled(not is_running)
+        self.step_action.setEnabled(not is_running)
+        self.stop_action.setEnabled(is_running)
 
     # @intent:responsibility デバッガの連続実行を開始します。
     @Slot()
     def _run_debugger(self):
+        self._update_ui_state(True)
         self.status_label.setText("Running...")
         self.debugger_thread.start()
 
@@ -155,10 +159,13 @@ class MainWindow(QMainWindow):
     # @intent:responsibility スナップショットの情報に基づいてUIを更新します。
     @Slot(Snapshot)
     def _update_ui_from_snapshot(self, snapshot: Snapshot):
+        self._update_ui_state(False) # 停止状態に戻す
+        
         self.register_view.update_registers(snapshot)
         self.flag_view.update_flags(snapshot)
         self.hex_view.update_memory(self.bus, snapshot.state.pc, 256, highlight_address=snapshot.state.pc)
         self.stack_view.update_stack(self.bus, snapshot.state.sp)
+        self.code_view.update_code(self.bus, snapshot.state.pc)
 
     @Slot(BreakpointCondition)
     def _add_breakpoint_to_debugger(self, condition: BreakpointCondition):
@@ -176,15 +183,19 @@ class MainWindow(QMainWindow):
         if file_name:
             try:
                 # Clear current memory and reset CPU before loading new program
-                # HACK: For now, re-instantiate Bus and CPU for a clean slate.
-                # A better approach would be to clear RAM and reset CPU registers.
-                # For simplicity of current implementation, recreate backend.
                 self._setup_backend() 
                 
                 loader = IntelHexLoader()
                 loader.load_intel_hex(file_name, self.bus)
                 self.cpu.reset() # Reset PC and other CPU state
-                self._update_ui_from_snapshot(self.debugger.step_instruction()) # Initial UI update
+                
+                # 初期状態を表示（実行はしない）
+                # ダミーのSnapshotを作成して表示更新
+                from retro_core_tracer.core.snapshot import Operation, Metadata
+                dummy_op = Operation(opcode_hex="00", mnemonic="NOP", operands=[]) # Dummy
+                dummy_meta = Metadata(cycle_count=0)
+                initial_snapshot = Snapshot(state=self.cpu.get_state(), operation=dummy_op, metadata=dummy_meta)
+                self._update_ui_from_snapshot(initial_snapshot)
 
                 QMessageBox.information(self, "Load HEX", f"Successfully loaded {file_name}")
             except Exception as e:
@@ -197,7 +208,8 @@ class MainWindow(QMainWindow):
         nav_dock = QDockWidget("Navigation", self)
         nav_dock.setAllowedAreas(Qt.LeftDockWidgetArea)
         tab_widget = QTabWidget()
-        tab_widget.addTab(QWidget(), "Assembler")
+        self.code_view = CodeView()
+        tab_widget.addTab(self.code_view, "Assembler")
         self.hex_view = HexView()
         tab_widget.addTab(self.hex_view, "HEX View")
         self.breakpoint_view = BreakpointView()
@@ -258,6 +270,24 @@ class MainWindow(QMainWindow):
             QTabBar::tab:!selected {{ margin-top: 2px; }}
             QToolTip {{ border: 1px solid #E0E0E0; background-color: #1D1D1D; color: #E0E0E0; }}
         """)
+
+    # @intent:responsibility アプリケーション終了時に呼ばれ、バックグラウンドスレッドを安全に停止します。
+    def closeEvent(self, event: QCloseEvent):
+        """
+        ウィンドウが閉じられる際のイベントハンドラ。
+        デバッガスレッドを安全に停止・待機してから終了します。
+        """
+        if self.debugger_thread.isRunning():
+            # UI更新シグナルを切断して、デッドロック（メインスレッドのブロック中のシグナル待ち）を防ぐ
+            try:
+                self.debugger_thread.breakpoint_hit.disconnect(self._update_ui_from_snapshot)
+            except RuntimeError:
+                pass # 接続されていない場合は無視
+
+            self.debugger.stop() # デバッガのループを停止
+            self.debugger_thread.quit() # スレッドのイベントループを停止
+            self.debugger_thread.wait() # スレッドの完全な終了を待機
+        event.accept()
 
 
 if __name__ == '__main__':
