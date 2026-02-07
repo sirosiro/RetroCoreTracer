@@ -14,6 +14,8 @@ from enum import Enum
 class BusAccessType(Enum):
     READ = "READ"
     WRITE = "WRITE"
+    IO_READ = "IO_READ"
+    IO_WRITE = "IO_WRITE"
 
 # @intent:responsibility 個々のバスアクセス操作を記録します。
 @dataclass(frozen=True) # 不変データ構造
@@ -164,13 +166,29 @@ class Bus:
         self._log_access(address, data, BusAccessType.READ)
         return data
 
-    # @intent:responsibility 指定されたアドレスに8bitのデータを書き込みます。
-    # @intent:pre-condition アドレスはマップされたデバイスの有効範囲内であり、データは8bit値である必要があります。
     def write(self, address: int, data: int) -> None:
         """
-        指定されたアドレスに8bitのデータを書き込みます。
+        指定された物理アドレスに8bitのデータを書き込みます。
         """
         device, offset = self._find_device(address)
         device.write(offset, data)
         self._log_access(address, data, BusAccessType.WRITE)
+
+    # @intent:responsibility 指定されたI/Oポートから8bitのデータを読み出します。
+    def read_io(self, address: int) -> int:
+        """
+        指定されたI/Oポートから8bitのデータを読み出します。
+        現状はデバイスマッピング未実装のため、常に0を返し、ログのみ記録します。
+        """
+        data = 0x00 # Default value for unmapped IO
+        self._log_access(address, data, BusAccessType.IO_READ)
+        return data
+
+    # @intent:responsibility 指定されたI/Oポートに8bitのデータを書き込みます。
+    def write_io(self, address: int, data: int) -> None:
+        """
+        指定されたI/Oポートに8bitのデータを書き込みます。
+        現状はデバイスマッピング未実装のため、ログのみ記録します。
+        """
+        self._log_access(address, data, BusAccessType.IO_WRITE)
 

@@ -84,3 +84,46 @@ def update_flags_add16(state: Z80CpuState, val1: int, val2: int, result: int) ->
     state.flag_h = ((val1 & 0x0FFF) + (val2 & 0x0FFF)) > 0x0FFF
     state.flag_n = False
     state.flag_c = result > 0xFFFF
+
+# @intent:responsibility シフト・ローテート演算の結果に基づいてフラグを更新し、結果を8ビットに丸めて返します。
+def rotate_shift8(state: Z80CpuState, val: int, op_type: int) -> int:
+    """
+    シフト・ローテート演算を実行し、フラグを更新します。
+    op_type: 0:RLC, 1:RRC, 2:RL, 3:RR, 4:SLA, 5:SRA, 6:SLL, 7:SRL
+    """
+    res = val
+    carry = 0
+    
+    if op_type == 0: # RLC
+        carry = (val >> 7) & 1
+        res = ((val << 1) | carry) & 0xFF
+    elif op_type == 1: # RRC
+        carry = val & 1
+        res = ((val >> 1) | (carry << 7)) & 0xFF
+    elif op_type == 2: # RL
+        carry = (val >> 7) & 1
+        res = ((val << 1) | (1 if state.flag_c else 0)) & 0xFF
+    elif op_type == 3: # RR
+        carry = val & 1
+        res = ((val >> 1) | ((1 if state.flag_c else 0) << 7)) & 0xFF
+    elif op_type == 4: # SLA
+        carry = (val >> 7) & 1
+        res = (val << 1) & 0xFF
+    elif op_type == 5: # SRA
+        carry = val & 1
+        res = ((val >> 1) | (val & 0x80)) & 0xFF
+    elif op_type == 6: # SLL (Undocumented: shift left and set bit 0)
+        carry = (val >> 7) & 1
+        res = ((val << 1) | 1) & 0xFF
+    elif op_type == 7: # SRL
+        carry = val & 1
+        res = (val >> 1) & 0xFF
+
+    state.flag_c = carry != 0
+    state.flag_h = False
+    state.flag_n = False
+    state.flag_s = (res & 0x80) != 0
+    state.flag_z = res == 0
+    state.flag_pv = calculate_parity(res)
+    
+    return res

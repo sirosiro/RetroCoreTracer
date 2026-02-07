@@ -10,7 +10,7 @@ from typing import List, Tuple, Callable
 from retro_core_tracer.arch.z80.state import Z80CpuState
 from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.core.snapshot import Operation
-from .alu import update_flags_add8, update_flags_sub8, update_flags_logic8, update_flags_inc_dec8, update_flags_add16
+from .alu import update_flags_add8, update_flags_sub8, update_flags_logic8, update_flags_inc_dec8, update_flags_add16, rotate_shift8
 
 # Helper functions for register mapping
 REGISTER_CODES = {
@@ -309,7 +309,135 @@ def decode_jr_cc_e(opcode: int, bus: Bus, pc: int) -> Operation:
         operand_bytes=[bus.read(pc + 1)]
     )
 
+# @intent:responsibility 0xCB プレフィックス命令（ビット操作、シフト、ローテート）をデコードします。
+def decode_cb(opcode: int, bus: Bus, pc: int) -> Operation:
+    """CBプレフィックス命令をデコードします。"""
+    cb_opcode = bus.read(pc + 1)
+    
+    reg_code = cb_opcode & 0b111
+    reg_name = _get_register_name(reg_code)
+    
+    type_code = (cb_opcode >> 6) & 0b11
+    bit_index = (cb_opcode >> 3) & 0b111
+    
+    if type_code == 0b01: # BIT b, r
+        mnemonic = f"BIT {bit_index},{reg_name}"
+        cycles = 8 if reg_name != "(HL)" else 12
+    elif type_code == 0b10: # RES b, r
+        mnemonic = f"RES {bit_index},{reg_name}"
+        cycles = 8 if reg_name != "(HL)" else 15
+    elif type_code == 0b11: # SET b, r
+        mnemonic = f"SET {bit_index},{reg_name}"
+        cycles = 8 if reg_name != "(HL)" else 15
+    else: # 0b00: Shift/Rotate
+        shift_ops = ["RLC", "RRC", "RL", "RR", "SLA", "SRA", "SLL", "SRL"]
+        mnemonic = f"{shift_ops[bit_index]} {reg_name}"
+        cycles = 8 if reg_name != "(HL)" else 15
+
+    return Operation(
+        opcode_hex="CB",
+        mnemonic=mnemonic,
+        operands=[],
+        cycle_count=cycles,
+        length=2,
+        operand_bytes=[cb_opcode]
+    )
+
+# @intent:responsibility 0xED プレフィックス命令（ブロック転送、拡張命令）をデコードします。
+def decode_ed(opcode: int, bus: Bus, pc: int) -> Operation:
+    """EDプレフィックス命令をデコードします。"""
+    ed_opcode = bus.read(pc + 1)
+    
+    # ブロック転送命令
+    if ed_opcode == 0xA0: mnemonic = "LDI"
+    elif ed_opcode == 0xB0: mnemonic = "LDIR"
+    elif ed_opcode == 0xA8: mnemonic = "LDD"
+    elif ed_opcode == 0xB8: mnemonic = "LDDR"
+    else: mnemonic = f"ED {ed_opcode:02X}"
+
+    # サイクル数: LDI/LDDは16, LDIR/LDDRはBC!=0なら21, BC=0なら16
+    cycles = 16
+    if mnemonic in ["LDIR", "LDDR"]:
+        # ここでは基本の21としておき、execute内で調整が必要なら行う（あるいは可視化のため1回分とする）
+        cycles = 21
+
+    return Operation(
+        opcode_hex="ED",
+        mnemonic=mnemonic,
+        operands=[],
+        cycle_count=cycles,
+        length=2,
+        operand_bytes=[ed_opcode]
+    )
+
 # --- Execution Functions ---
+
+def execute_ed(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """EDプレフィックス命令を実行します。"""
+    ed_opcode = operation.operand_bytes[0]
+    
+    if ed_opcode in [0xA0, 0xB0, 0xA8, 0xB8]:
+        # Block Transfer
+        is_repeat = (ed_opcode & 0x10) != 0
+        is_decrement = (ed_opcode & 0x08) != 0
+        
+        # 1 byte transfer
+        data = bus.read(state.hl)
+        bus.write(state.de, data)
+        
+        if is_decrement:
+            state.hl = (state.hl - 1) & 0xFFFF
+            state.de = (state.de - 1) & 0xFFFF
+        else:
+            state.hl = (state.hl + 1) & 0xFFFF
+            state.de = (state.de + 1) & 0xFFFF
+            
+        state.bc = (state.bc - 1) & 0xFFFF
+        
+        # Flags
+        state.flag_n = False
+        state.flag_h = False
+        state.flag_pv = state.bc != 0
+        # S, Z, C are preserved (no change)
+        
+        if is_repeat and state.bc != 0:
+            # PCをこの命令の先頭に戻すことで、次のstepで再び実行されるようにする
+            # Z80Cpu.step 内で既に length=2 分進んでいるため、-2 する
+            state.pc = (state.pc - 2) & 0xFFFF
+            # 繰り返し時のサイクル数は21 (通常16 + 5)
+            # ここではoperation.cycle_countは既に返されているので、累積に影響させるには工夫が必要
+            # 今回は簡易的にそのまま進める
+
+def execute_cb(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """CBプレフィックス命令を実行します。"""
+    cb_opcode = operation.operand_bytes[0]
+    
+    reg_code = cb_opcode & 0b111
+    reg_name = _get_register_name(reg_code)
+    
+    type_code = (cb_opcode >> 6) & 0b11
+    bit_index = (cb_opcode >> 3) & 0b111
+    
+    val = _get_register_value(state, bus, reg_name)
+    
+    if type_code == 0b01: # BIT b, r
+        # BIT命令のフラグ更新
+        res = val & (1 << bit_index)
+        state.flag_z = res == 0
+        state.flag_h = True
+        state.flag_n = False
+        state.flag_s = (bit_index == 7) and (res != 0)
+        # P/V is same as Z
+        state.flag_pv = state.flag_z
+    elif type_code == 0b10: # RES b, r
+        val &= ~(1 << bit_index)
+        _set_register_value(state, bus, reg_name, val)
+    elif type_code == 0b11: # SET b, r
+        val |= (1 << bit_index)
+        _set_register_value(state, bus, reg_name, val)
+    else: # 0b00: Shift/Rotate
+        new_val = rotate_shift8(state, val, bit_index)
+        _set_register_value(state, bus, reg_name, new_val)
 
 def execute_add_hl_ss(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
     opcode = int(operation.opcode_hex, 16)
@@ -494,15 +622,58 @@ def execute_jr_cc_e(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
             offset -= 256
         state.pc = (state.pc + offset) & 0xFFFF
 
+# @intent:responsibility オペコード0xDB (IN A,(n)) をデコードします。
+def decode_db(opcode: int, bus: Bus, pc: int) -> Operation:
+    """IN A,(n)命令をデコードします。"""
+    n = bus.read(pc + 1)
+    return Operation(
+        opcode_hex="DB",
+        mnemonic="IN A,(n)",
+        operands=[f"(${n:02X})"],
+        cycle_count=11,
+        length=2,
+        operand_bytes=[n]
+    )
+
+# @intent:responsibility オペコード0xD3 (OUT (n),A) をデコードします。
+def decode_d3(opcode: int, bus: Bus, pc: int) -> Operation:
+    """OUT (n),A命令をデコードします。"""
+    n = bus.read(pc + 1)
+    return Operation(
+        opcode_hex="D3",
+        mnemonic="OUT (n),A",
+        operands=[f"(${n:02X})"],
+        cycle_count=11,
+        length=2,
+        operand_bytes=[n]
+    )
+
+def execute_db(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """IN A,(n)命令を実行します。"""
+    port = operation.operand_bytes[0]
+    # Z80では上位8ビットにAレジスタの値が出力される
+    address = (state.a << 8) | port
+    state.a = bus.read_io(address)
+
+def execute_d3(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """OUT (n),A命令を実行します。"""
+    port = operation.operand_bytes[0]
+    address = (state.a << 8) | port
+    bus.write_io(address, state.a)
+
 # --- Tables ---
 
 DECODE_MAP = {
     0x00: decode_00,
     0x10: decode_10,
     0x76: decode_76,
+    0xCB: decode_cb,
+    0xED: decode_ed,
     0xC3: decode_c3,
     0xC9: decode_c9,
     0xCD: decode_cd,
+    0xDB: decode_db,
+    0xD3: decode_d3,
     0x18: decode_18,
     0xFE: decode_fe,
     **{op: decode_ld_ss_nn for op in range(0x01, 0x40, 0x10)}, # LD BC/DE/HL/SP, nn
@@ -523,9 +694,13 @@ EXECUTE_MAP = {
     0x00: execute_00,
     0x10: execute_10,
     0x76: execute_76,
+    0xCB: execute_cb,
+    0xED: execute_ed,
     0xC3: execute_c3,
     0xC9: execute_c9,
     0xCD: execute_cd,
+    0xDB: execute_db,
+    0xD3: execute_d3,
     0x18: execute_18,
     0xFE: execute_fe,
     **{op: execute_ld_ss_nn for op in range(0x01, 0x40, 0x10)},

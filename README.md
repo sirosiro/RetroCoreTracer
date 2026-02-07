@@ -24,6 +24,9 @@ Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ
 *   **転送命令:** `LD r,n`, `LD r,r'`, `LD ss,nn`, `LD HL,nn`, `PUSH`, `POP`
 *   **演算命令:** `INC`, `DEC`, `ADD A,r`, `SUB`, `ADC`, `SBC`, `AND`, `OR`, `XOR`, `CP`, `ADD HL,ss`
 *   **分岐命令:** `JP nn`, `JR e`, `JR cc,e`, `DJNZ`, `CALL`, `RET`
+*   **ビット操作 (`CB`):** `BIT`, `SET`, `RES`, `RLC`, `RRC`, `RL`, `RR`, `SLA`, `SRA`, `SRL`
+*   **ブロック転送 (`ED`):** `LDI`, `LDIR`, `LDD`, `LDDR`
+*   **I/O命令:** `IN A,(n)`, `OUT (n),A`
 *   **その他:** `NOP`, `HALT`
 
 ## 🚀 インストール
