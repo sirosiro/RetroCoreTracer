@@ -36,71 +36,58 @@ class HexView(QWidget):
         hex_dump_text = []
         bytes_per_row = 16
 
-        # Ensure length is a multiple of bytes_per_row for clean display
-        # Or adjust start_address to align to row start if needed
-        # For simplicity, we'll just read 'length' bytes
-        
-        # Adjust start_address to be row-aligned for consistent display
-        display_start_address = start_address - (start_address % bytes_per_row)
-        display_end_address = start_address + length
-        # Ensure we always display at least a few rows around the highlight_address if it's outside current view
-        
-        # Cap the total memory to display for performance (e.g., 256 bytes around PC)
-        view_window_size = 256
-        if highlight_address is not None:
-            display_start_address = max(0, highlight_address - view_window_size // 2)
-            display_end_address = min(0xFFFF, highlight_address + view_window_size // 2)
-        else:
-            display_end_address = min(0xFFFF, display_start_address + length)
-
+        # 表示範囲を広げる（例: 全64KBを表示してスクロール可能にする）
+        # ただし、パフォーマンスのため、一度に全て読み込むのではなく、表示を維持しつつ更新する工夫が必要
+        # ここではまず、要件である 0x1000 が見えるように表示範囲を 0x2000 (8KB) まで広げます。
+        display_start_address = 0x0000
+        display_end_address = 0x2000 # 暫定的に 8KB 分を表示
 
         current_address = display_start_address
         while current_address < display_end_address:
-            # Read 16 bytes for the current row
+            # 1行分のデータを取得
             hex_part = []
             ascii_part = []
-            row_bytes = []
             
             for i in range(bytes_per_row):
                 addr = current_address + i
                 if addr >= 0xFFFF + 1: # Z80 64KB address space
                     break
                 try:
-                    byte_val = bus.read(addr)
+                    # ログを汚さないようにpeekを使用
+                    byte_val = bus.peek(addr)
                     hex_part.append(f"{byte_val:02X}")
                     ascii_part.append(chr(byte_val) if 32 <= byte_val <= 126 else '.')
-                    row_bytes.append(byte_val)
-                except IndexError: # If bus.read goes out of bounds
+                except IndexError:
                     hex_part.append("XX")
                     ascii_part.append(".")
-                    row_bytes.append(0) # Dummy value
             
-            # Format the line
+            # 1行のテキストを生成
             line = f"{current_address:04X}: {' '.join(hex_part).ljust(bytes_per_row * 3 - 1)} {(''.join(ascii_part)).ljust(bytes_per_row)}"
             hex_dump_text.append(line)
             current_address += bytes_per_row
 
         self.editor.setPlainText("\n".join(hex_dump_text))
 
-        # Highlight the line corresponding to highlight_address
+        # PC位置のハイライトとスクロール制御
         if highlight_address is not None:
             cursor = self.editor.textCursor()
-            # Calculate the line number for the highlight_address
-            # Each line starts at an address that is a multiple of bytes_per_row
             line_to_highlight = (highlight_address - display_start_address) // bytes_per_row
             
             if 0 <= line_to_highlight < len(hex_dump_text):
                 cursor.movePosition(QTextCursor.Start)
                 cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_to_highlight)
-                cursor.select(QTextCursor.BlockUnderCursor)
                 
+                # ハイライトの適用
                 fmt = QTextCharFormat()
-                fmt.setBackground(QColor("#404000")) # Dark yellow/gold background
+                fmt.setBackground(QColor("#404000")) 
+                cursor.select(QTextCursor.BlockUnderCursor)
                 cursor.mergeCharFormat(fmt)
 
-                # Ensure the highlighted line is visible
+                # 表示位置の調整
+                # ユーザーが自由にスクロールしている最中にPCが変わっても、
+                # 強制的にジャンプさせすぎないように editor.ensureCursorVisible() を使用。
                 self.editor.setTextCursor(cursor)
-                # self.editor.centerCursor() # This scrolls it to center, might be too aggressive
+                self.editor.ensureCursorVisible()
 # Minimal test code
 if __name__ == '__main__':
     import sys

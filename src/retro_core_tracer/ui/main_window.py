@@ -67,6 +67,9 @@ class MainWindow(QMainWindow):
         self._create_toolbar()
         self._create_dock_widgets()
         
+        # ステータスバーの初期化
+        self.statusBar().showMessage("Ready")
+        
         self._update_ui_state(False) # 初期状態は停止中
 
         # Connect BreakpointView signals (now that breakpoint_view exists)
@@ -148,18 +151,22 @@ class MainWindow(QMainWindow):
         self.run_action.setEnabled(not is_running)
         self.step_action.setEnabled(not is_running)
         self.stop_action.setEnabled(is_running)
+        
+        if is_running:
+            self.statusBar().showMessage("Running...")
+        else:
+            self.statusBar().showMessage("Stopped")
 
     # @intent:responsibility デバッガの連続実行を開始します。
     @Slot()
     def _run_debugger(self):
         self._update_ui_state(True)
-        self.status_label.setText("Running...")
         self.debugger_thread.start()
 
     # @intent:responsibility デバッガの連続実行を停止します。
     @Slot()
     def _stop_debugger(self):
-        self.status_label.setText("Stopping...")
+        self.statusBar().showMessage("Stopping...")
         self.debugger.stop()
 
     # @intent:responsibility デバッガを1ステップ実行します。
@@ -172,6 +179,10 @@ class MainWindow(QMainWindow):
     @Slot(Snapshot)
     def _update_ui_from_snapshot(self, snapshot: Snapshot):
         self._update_ui_state(False) # 停止状態に戻す
+        
+        # ステータスバーにサイクル数を表示
+        cycle_count = snapshot.metadata.cycle_count
+        self.statusBar().showMessage(f"Stopped | T-States: {cycle_count}")
         
         self.register_view.update_registers(snapshot)
         self.flag_view.update_flags(snapshot)

@@ -160,12 +160,23 @@ class Bus:
     def read(self, address: int) -> int:
         """
         指定されたアドレスから8bitのデータを読み出します。
+        アクセスはログに記録されます。
         """
         device, offset = self._find_device(address)
         data = device.read(offset)
         self._log_access(address, data, BusAccessType.READ)
         return data
 
+    # @intent:responsibility ログを記録せずに指定されたアドレスからデータを読み出します。
+    def peek(self, address: int) -> int:
+        """
+        指定されたアドレスから8bitのデータを読み出します（ログ記録なし）。
+        UIなどのインスペクタ用。
+        """
+        device, offset = self._find_device(address)
+        return device.read(offset)
+
+    # @intent:responsibility 指定されたアドレスに8bitのデータを書き込みます。
     def write(self, address: int, data: int) -> None:
         """
         指定された物理アドレスに8bitのデータを書き込みます。

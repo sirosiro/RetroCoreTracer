@@ -57,10 +57,11 @@ class StackView(QWidget):
                     ascii_part.append(".")
                 else:
                     try:
-                        byte_val = bus.read(addr)
+                        # ログを汚さないようにpeekを使用
+                        byte_val = bus.peek(addr)
                         hex_part.append(f"{byte_val:02X}")
                         ascii_part.append(chr(byte_val) if 32 <= byte_val <= 126 else '.')
-                    except IndexError: # If bus.read goes out of bounds
+                    except IndexError: # If bus.peek goes out of bounds
                         hex_part.append("XX")
                         ascii_part.append(".")
             

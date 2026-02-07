@@ -23,7 +23,10 @@ def disassemble(bus: Bus, start_addr: int, length: int) -> List[Tuple[int, str, 
 
         try:
             # 現在のアドレスのオペコードを読み取る
-            opcode = bus.read(current_addr)
+            # ログを汚さないためにpeekを使用
+            opcode = bus.peek(current_addr)
+            mnemonic = "UNKNOWN"
+            length = 1
             
             # デコード（decode_opcodeはオペランド読み取りのためにbusアクセスを行う）
             # 副作用はないはずだが、読み取り位置がずれないように注意
