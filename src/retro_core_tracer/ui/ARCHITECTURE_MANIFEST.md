@@ -133,6 +133,8 @@
 - **提供するAPI (Public API):**
     - `set_breakpoints(breakpoints: List[BreakpointCondition]) -> None`:
         - 現在設定されているブレークポイントのリストを受け取り、一覧表示を更新する。
+    - `set_symbol_map(self, symbol_map: Dict[str, int]) -> None`:
+        - **責務:** デバッグシンボル情報（ラベルとアドレスの対応）を設定する。ブレークポイント設定時の入力値としてラベル名を使用可能にするために使用される。
     - **Signals:**
         - `breakpoint_added(BreakpointCondition)`: ユーザーが新しいブレークポイントを追加したときに発行される。
         - `breakpoint_removed(BreakpointCondition)`: ユーザーがブレークポイントを削除したときに発行される。

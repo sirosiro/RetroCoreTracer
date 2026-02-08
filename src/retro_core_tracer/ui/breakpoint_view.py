@@ -3,11 +3,11 @@
 ブレークポイントの管理UIウィジェット。
 """
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QLineEdit,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit,
     QPushButton, QListWidget, QListWidgetItem, QInputDialog, QMessageBox
 )
 from PySide6.QtCore import Qt, Signal, Slot
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from retro_core_tracer.debugger.debugger import BreakpointCondition, BreakpointConditionType
 
@@ -27,29 +27,63 @@ class BreakpointView(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(5, 5, 5, 5)
 
+        self.symbol_map: Dict[str, int] = {}
+
         # --------------------
         # ブレークポイント追加フォーム
         # --------------------
-        add_form_layout = QHBoxLayout()
+        # @intent:change レイアウトをグリッドにして、幅が狭いときでも入力欄を確保する
+        add_form_layout = QGridLayout()
 
         # タイプ選択
-        add_form_layout.addWidget(QLabel("Type:"))
+        add_form_layout.addWidget(QLabel("Type:"), 0, 0)
         self.type_combo = QComboBox()
+        # ドロップダウンリストの幅を最小限確保し、見切れを防ぐ
+        self.type_combo.setMinimumWidth(120)
+        self.type_combo.view().setMinimumWidth(150) # リスト部分を少し広げる
+        # @intent:change 視認性改善のためのスタイルシート設定
+        self.type_combo.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 2px 5px;
+                background-color: #333;
+                color: #EEE;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 15px;
+                border-left-width: 1px;
+                border-left-color: darkgray;
+                border-left-style: solid;
+                border-top-right-radius: 3px;
+                border-bottom-right-radius: 3px;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid darkgray;
+                selection-background-color: #2A82DA;
+                selection-color: white;
+                background-color: #333;
+                color: #EEE;
+                outline: none;
+            }
+        """)
         for bp_type in BreakpointConditionType:
             self.type_combo.addItem(bp_type.name, bp_type) # Store enum value as user data
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
-        add_form_layout.addWidget(self.type_combo)
+        add_form_layout.addWidget(self.type_combo, 0, 1)
 
         # 値/アドレス/レジスタ名入力
-        add_form_layout.addWidget(QLabel("Value/Addr/Reg:"))
+        add_form_layout.addWidget(QLabel("Value/Addr/Reg:"), 0, 2)
         self.value_input = QLineEdit()
         self.value_input.setPlaceholderText("e.g., 0x1234 or A")
-        add_form_layout.addWidget(self.value_input)
+        add_form_layout.addWidget(self.value_input, 0, 3)
         
-        # 追加ボタン
+        # 追加ボタン (2行目に配置して横幅を確保)
         self.add_button = QPushButton("Add Breakpoint")
         self.add_button.clicked.connect(self._add_breakpoint)
-        add_form_layout.addWidget(self.add_button)
+        add_form_layout.addWidget(self.add_button, 1, 0, 1, 4) # Span across all columns
 
         self.layout.addLayout(add_form_layout)
 
@@ -63,6 +97,13 @@ class BreakpointView(QWidget):
         # 初期状態のUIを更新
         self._on_type_changed(self.type_combo.currentIndex())
     
+    # @intent:responsibility シンボルマップを設定します。
+    def set_symbol_map(self, symbol_map: Dict[str, int]):
+        """
+        シンボルマップを設定します。入力値のラベル解決に使用されます。
+        """
+        self.symbol_map = symbol_map
+
     # @intent:responsibility 選択されたブレークポイントタイプに応じて、入力フィールドのプレースホルダーと有効状態を更新します。
     @Slot(int)
     def _on_type_changed(self, index: int):
@@ -72,15 +113,46 @@ class BreakpointView(QWidget):
             if selected_type == BreakpointConditionType.REGISTER_VALUE:
                 self.value_input.setPlaceholderText("e.g., A:0xAA or HL:0x1234")
             elif selected_type in [BreakpointConditionType.MEMORY_READ, BreakpointConditionType.MEMORY_WRITE]:
-                self.value_input.setPlaceholderText("e.g., 0x1000")
+                self.value_input.setPlaceholderText("e.g., 0x1000 or Label")
             else: # PC_MATCH
-                self.value_input.setPlaceholderText("e.g., 0x1234")
+                self.value_input.setPlaceholderText("e.g., 0x1234 or Label")
         elif selected_type == BreakpointConditionType.REGISTER_CHANGE:
             self.value_input.setEnabled(True)
             self.value_input.setPlaceholderText("e.g., A or HL")
         else: # 例えば、将来的に引数が不要なタイプが追加された場合
             self.value_input.setEnabled(False)
             self.value_input.clear()
+
+    # @intent:utility_function 入力文字列を数値に変換します。16進数、10進数、またはラベル名を解決します。
+    def _resolve_value(self, value_str: str) -> Optional[int]:
+        value_str = value_str.strip()
+        if not value_str:
+            return None
+        
+        # 1. Try hex
+        try:
+            return int(value_str, 16)
+        except ValueError:
+            pass
+            
+        # 2. Try decimal (only if it doesn't look like a symbol, but simple digits)
+        # Note: Symbols can be anything, but usually start with letters.
+        if value_str.isdigit():
+             try:
+                return int(value_str, 10)
+             except ValueError:
+                pass
+
+        # 3. Try Symbol Map
+        if value_str in self.symbol_map:
+            return self.symbol_map[value_str]
+        
+        # 4. Try Symbol Map with case insensitivity (optional, but good for UX)
+        upper_map = {k.upper(): v for k, v in self.symbol_map.items()}
+        if value_str.upper() in upper_map:
+            return upper_map[value_str.upper()]
+
+        return None
 
     # @intent:responsibility ユーザー入力に基づいて新しいブレークポイント条件を作成し、シグナルを発行します。
     @Slot()
@@ -92,30 +164,48 @@ class BreakpointView(QWidget):
 
         try:
             if bp_type == BreakpointConditionType.PC_MATCH:
-                value = int(value_str, 16)
+                value = self._resolve_value(value_str)
+                if value is None:
+                    raise ValueError(f"Invalid value or unknown label: '{value_str}'")
                 condition = BreakpointCondition(condition_type=bp_type, value=value)
+            
             elif bp_type == BreakpointConditionType.MEMORY_READ or bp_type == BreakpointConditionType.MEMORY_WRITE:
-                address = int(value_str, 16)
+                address = self._resolve_value(value_str)
+                if address is None:
+                    raise ValueError(f"Invalid address or unknown label: '{value_str}'")
                 condition = BreakpointCondition(condition_type=bp_type, address=address)
+            
             elif bp_type == BreakpointConditionType.REGISTER_VALUE:
-                reg_name_str, reg_value_str = value_str.split(':')
-                reg_name = reg_name_str.upper()
-                reg_value = int(reg_value_str, 16)
+                # Format: REG:VALUE
+                if ':' not in value_str:
+                    raise ValueError("Format must be REG:VALUE (e.g., A:0xFF)")
+                reg_name_str, reg_value_str = value_str.split(':', 1)
+                reg_name = reg_name_str.strip().upper()
+                reg_value = self._resolve_value(reg_value_str)
+                if reg_value is None:
+                     raise ValueError(f"Invalid value: '{reg_value_str}'")
                 condition = BreakpointCondition(condition_type=bp_type, register_name=reg_name, value=reg_value)
+            
             elif bp_type == BreakpointConditionType.REGISTER_CHANGE:
-                reg_name = value_str.upper()
+                reg_name = value_str.strip().upper()
+                if not reg_name:
+                    raise ValueError("Register name cannot be empty")
                 condition = BreakpointCondition(condition_type=bp_type, register_name=reg_name)
             
             if condition:
                 # 重複チェックはDebuggerクラスが担当するが、UIでも表示上の重複は避ける
                 for i in range(self.bp_list_widget.count()):
                     item = self.bp_list_widget.item(i)
-                    if item.data(Qt.UserRole) == condition:
+                    existing_bp = item.data(Qt.UserRole)
+                    # Note: BreakpointCondition needs __eq__ for this to work perfectly, 
+                    # assuming dataclass provides it by default.
+                    if existing_bp == condition:
                         QMessageBox.warning(self, "Duplicate Breakpoint", "This breakpoint already exists.")
                         return
 
                 self.breakpoint_added.emit(condition) # MainWindowに通知
                 self._update_list() # リスト更新はMainWindowからのコールバックでやる方がクリーン
+                self.value_input.clear() # Clear input on success
 
         except ValueError as e:
             QMessageBox.critical(self, "Input Error", f"Invalid input for breakpoint: {e}")

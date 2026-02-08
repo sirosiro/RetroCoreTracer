@@ -255,6 +255,7 @@ class MainWindow(QMainWindow):
                 self.cpu.reset()
                 self.cpu.set_symbol_map(symbol_map) # シンボルマップをCPUに設定
                 self.code_view.set_symbol_map(symbol_map) # シンボルマップをCodeViewに設定
+                self.breakpoint_view.set_symbol_map(symbol_map) # シンボルマップをBreakpointViewに設定
                 
                 self.code_view.reset_cache()
 
@@ -277,6 +278,11 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Intel HEX File", "", "Intel HEX Files (*.hex);;All Files (*)")
         if file_name:
             try:
+                # Clear existing symbol maps as HEX files don't contain symbols
+                self.cpu.set_symbol_map({})
+                self.code_view.set_symbol_map({})
+                self.breakpoint_view.set_symbol_map({})
+
                 # Clear current memory and reset CPU before loading new program
                 # Note: We keep the current bus configuration (RAM size etc.)
                 # self._setup_backend() 
