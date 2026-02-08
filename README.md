@@ -24,11 +24,14 @@ Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ
 
 ### 対応するZ80命令セット (Implemented Instructions)
 *   **転送命令:** `LD r,n`, `LD r,r'`, `LD ss,nn`, `LD HL,nn`, `PUSH`, `POP`
+*   **インデックスレジスタ (`DD`/`FD`):** `LD IX/IY,nn`, `LD A,(IX+d)`, `ADD IX,ss`, `INC IX` 等
+*   **交換命令:** `EX DE,HL`, `EX AF,AF'`, `EXX`, `EX (SP),HL`
 *   **演算命令:** `INC`, `DEC`, `ADD A,r`, `SUB`, `ADC`, `SBC`, `AND`, `OR`, `XOR`, `CP`, `ADD HL,ss`
 *   **分岐命令:** `JP nn`, `JR e`, `JR cc,e`, `DJNZ`, `CALL`, `RET`
 *   **ビット操作 (`CB`):** `BIT`, `SET`, `RES`, `RLC`, `RRC`, `RL`, `RR`, `SLA`, `SRA`, `SRL`
 *   **ブロック転送 (`ED`):** `LDI`, `LDIR`, `LDD`, `LDDR`
 *   **I/O命令:** `IN A,(n)`, `OUT (n),A`
+*   **割り込み制御:** `EI`, `DI`, `IM 0/1/2`, `RETI`, `RETN`
 *   **その他:** `NOP`, `HALT`
 
 ## 🚀 インストール
@@ -75,7 +78,7 @@ python -m retro_core_tracer.ui.app
 ```
 
 ### 基本操作
-1.  **Load HEX:** `File` -> `Load HEX...` からIntel HEX形式のプログラムを読み込みます。
+1.  **Load HEX/Assembly:** `File` -> `Load HEX...` または `Load Assembly...` からプログラムを読み込みます。アセンブリ形式を読み込むと、ラベル情報がデバッガ上でシンボルとして表示されます。
 2.  **Run/Step:** ツールバーのボタンで実行制御を行います。
     *   `Step`: 1命令ずつ実行します。
     *   `Run`: 連続実行します。

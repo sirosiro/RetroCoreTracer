@@ -88,11 +88,18 @@ class Z80Cpu(AbstractCpu):
         # サイクルカウントを更新
         self._cycle_count += operation.cycle_count
 
+        # シンボル情報の取得
+        symbol_label = self._reverse_symbol_map.get(initial_pc, "")
+        symbol_info = f"{symbol_label}: " if symbol_label else ""
+        symbol_info += f"{operation.mnemonic}"
+        if operation.operands:
+            symbol_info += " " + ", ".join(operation.operands)
+
         # スナップショットの生成
         snapshot = Snapshot(
             state=self.get_state(), # 実行後の状態
             operation=operation,
-            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=f"PC: {initial_pc:#06x} -> {operation.mnemonic}"),
+            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=symbol_info),
             bus_activity=bus_activity, # Actual bus activity
         )
         return snapshot

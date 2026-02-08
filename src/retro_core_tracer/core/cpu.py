@@ -6,7 +6,7 @@ Core Layer (抽象CPU)
 具体的な命令の振る舞いはInstruction Layerに移譲されます。
 """
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.core.snapshot import Snapshot, Operation, Metadata
@@ -24,8 +24,19 @@ class AbstractCpu(ABC):
         self._bus = bus
         self._state: CpuState = self._create_initial_state()
         self._cycle_count: int = 0
+        self._symbol_map: Dict[str, int] = {}
+        self._reverse_symbol_map: Dict[int, str] = {}
         # @intent:rationale Stateオブジェクトの直接操作を避けるため、protectedな命名規則を採用。
         #                  外部からのアクセスは`get_state()`メソッドを介して行う。
+
+    # @intent:responsibility シンボルマップを設定します。
+    def set_symbol_map(self, symbol_map: Dict[str, int]) -> None:
+        """
+        シンボルマップ（名前とアドレスの対応表）を設定します。
+        """
+        self._symbol_map = symbol_map
+        # 逆引きマップを作成して、アドレスからラベルを素早く引けるようにする
+        self._reverse_symbol_map = {addr: name for name, addr in symbol_map.items()}
 
     # @intent:responsibility 初期状態のCpuStateオブジェクトを生成します。
     # @intent:rationale 各CPUアーキテクチャで初期状態が異なる可能性があるため、抽象メソッドとして定義します。
@@ -109,15 +120,19 @@ class AbstractCpu(ABC):
         # サイクルカウントを更新
         self._cycle_count += operation.cycle_count
 
-        # @todo-intent: symbol_infoを正確に取得する
+        # シンボル情報の取得
+        symbol_label = self._reverse_symbol_map.get(initial_pc, "")
+        symbol_info = f"{symbol_label}: " if symbol_label else ""
+        symbol_info += f"{operation.mnemonic}"
+        if operation.operands:
+            symbol_info += " " + ", ".join(operation.operands)
 
         # スナップショットの生成
-        # TODO: metadata を正確に生成するようにする
         snapshot = Snapshot(
             state=self.get_state(), # 実行後の状態
             operation=operation,
             bus_activity=bus_activity,
-            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=f"PC: {initial_pc:#06x} -> {operation.mnemonic}")
+            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=symbol_info)
         )
         return snapshot
 

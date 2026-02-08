@@ -56,6 +56,9 @@ class Z80CpuState(CpuState):
     r: int = 0x00  # Refresh Register
 
     halted: bool = False # CPU stop state flag
+    iff1: bool = False   # Interrupt Flip-Flop 1
+    iff2: bool = False   # Interrupt Flip-Flop 2
+    im: int = 0          # Interrupt Mode (0, 1, 2)
 
     # @intent:accessor Z80のFレジスタの各フラグビットにアクセスするためのプロパティを提供します。
     # @intent:rationale フラグを直接ビット操作する代わりに、分かりやすいプロパティとして提供することで、コードの可読性と保守性を高めます。

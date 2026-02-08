@@ -8,7 +8,7 @@ import sys
 from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QVBoxLayout, QDockWidget, QTabWidget, QToolBar, QLabel, QFileDialog, QMessageBox
 from PySide6.QtGui import QPalette, QColor, QIcon, QAction, QCloseEvent
 
-from retro_core_tracer.loader.loader import IntelHexLoader
+from retro_core_tracer.loader.loader import IntelHexLoader, AssemblyLoader
 from retro_core_tracer.config.loader import ConfigLoader
 from retro_core_tracer.config.builder import SystemBuilder
    
@@ -92,6 +92,10 @@ class MainWindow(QMainWindow):
         self.load_hex_action.triggered.connect(self._load_hex_file)
         file_menu.addAction(self.load_hex_action)
 
+        self.load_asm_action = QAction("Load Assembly...", self)
+        self.load_asm_action.triggered.connect(self._load_assembly_file)
+        file_menu.addAction(self.load_asm_action)
+
         # View Menu will be populated in _create_dock_widgets
         self.view_menu = menu_bar.addMenu("View")
 
@@ -148,6 +152,7 @@ class MainWindow(QMainWindow):
     # @intent:responsibility 実行状態に応じてUIコンポーネントの有効/無効を切り替えます。
     def _update_ui_state(self, is_running: bool):
         self.load_hex_action.setEnabled(not is_running)
+        self.load_asm_action.setEnabled(not is_running)
         self.run_action.setEnabled(not is_running)
         self.step_action.setEnabled(not is_running)
         self.stop_action.setEnabled(is_running)
@@ -199,6 +204,33 @@ class MainWindow(QMainWindow):
     def _remove_breakpoint_from_debugger(self, condition: BreakpointCondition):
         self.debugger.remove_breakpoint(condition)
         self.breakpoint_view.set_breakpoints(self.debugger.get_breakpoints()) # Update view
+
+    @Slot()
+    def _load_assembly_file(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open Assembly Source", "", "Assembly Files (*.asm *.s);;All Files (*)")
+        if file_name:
+            try:
+                loader = AssemblyLoader()
+                symbol_map = loader.load_assembly(file_name, self.bus)
+                
+                self.cpu.reset()
+                self.cpu.set_symbol_map(symbol_map) # シンボルマップをCPUに設定
+                
+                self.code_view.reset_cache()
+
+                # 初期状態を表示
+                from retro_core_tracer.core.snapshot import Operation, Metadata
+                dummy_op = Operation(opcode_hex="00", mnemonic="NOP", operands=[])
+                # シンボルがあれば反映
+                symbol_label = next((name for name, addr in symbol_map.items() if addr == self.cpu.get_state().pc), "")
+                symbol_info = f"{symbol_label}: NOP" if symbol_label else "NOP"
+                dummy_meta = Metadata(cycle_count=0, symbol_info=symbol_info)
+                initial_snapshot = Snapshot(state=self.cpu.get_state(), operation=dummy_op, metadata=dummy_meta)
+                self._update_ui_from_snapshot(initial_snapshot)
+
+                QMessageBox.information(self, "Load Assembly", f"Successfully loaded {file_name} with {len(symbol_map)} symbols.")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load Assembly file: {e}")
 
     @Slot()
     def _load_hex_file(self):

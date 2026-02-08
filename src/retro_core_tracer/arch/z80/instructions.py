@@ -343,6 +343,46 @@ def decode_cb(opcode: int, bus: Bus, pc: int) -> Operation:
         operand_bytes=[cb_opcode]
     )
 
+# @intent:responsibility オペコード0xFB (EI) をデコードします。
+def decode_fb(opcode: int, bus: Bus, pc: int) -> Operation:
+    """EI命令をデコードします。"""
+    return Operation(opcode_hex="FB", mnemonic="EI", operands=[], cycle_count=4, length=1)
+
+# @intent:responsibility オペコード0xF3 (DI) をデコードします。
+def decode_f3(opcode: int, bus: Bus, pc: int) -> Operation:
+    """DI命令をデコードします。"""
+    return Operation(opcode_hex="F3", mnemonic="DI", operands=[], cycle_count=4, length=1)
+
+def execute_fb(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """EI命令を実行します。"""
+    # @intent:rationale Z80ではEIの直後の命令までは割り込みが待機されますが、
+    #                   ここでは簡易的に即座にIFF1, IFF2をセットします。
+    state.iff1 = True
+    state.iff2 = True
+
+def execute_f3(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """DI命令を実行します。"""
+    state.iff1 = False
+    state.iff2 = False
+
+def execute_im(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """IM 0/1/2命令を実行します。"""
+    ed_opcode = operation.operand_bytes[0]
+    if ed_opcode == 0x46: state.im = 0
+    elif ed_opcode == 0x56: state.im = 1
+    elif ed_opcode == 0x5E: state.im = 2
+
+def execute_reti_retn(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """RETI/RETN命令を実行します。"""
+    # スタックから戻り先PCを復帰
+    execute_c9(state, bus, operation)
+    
+    ed_opcode = operation.operand_bytes[0]
+    if ed_opcode == 0x45: # RETN
+        # IFF2をIFF1にコピー
+        state.iff1 = state.iff2
+    # RETIはZ80周辺デバイス向けの信号通知があるが、ここでは通常のRETと同様
+
 # @intent:responsibility 0xED プレフィックス命令（ブロック転送、拡張命令）をデコードします。
 def decode_ed(opcode: int, bus: Bus, pc: int) -> Operation:
     """EDプレフィックス命令をデコードします。"""
@@ -353,13 +393,19 @@ def decode_ed(opcode: int, bus: Bus, pc: int) -> Operation:
     elif ed_opcode == 0xB0: mnemonic = "LDIR"
     elif ed_opcode == 0xA8: mnemonic = "LDD"
     elif ed_opcode == 0xB8: mnemonic = "LDDR"
+    # 割り込み関連
+    elif ed_opcode == 0x46: mnemonic = "IM 0"
+    elif ed_opcode == 0x56: mnemonic = "IM 1"
+    elif ed_opcode == 0x5E: mnemonic = "IM 2"
+    elif ed_opcode == 0x4D: mnemonic = "RETI"
+    elif ed_opcode == 0x45: mnemonic = "RETN"
     else: mnemonic = f"ED {ed_opcode:02X}"
 
-    # サイクル数: LDI/LDDは16, LDIR/LDDRはBC!=0なら21, BC=0なら16
-    cycles = 16
-    if mnemonic in ["LDIR", "LDDR"]:
-        # ここでは基本の21としておき、execute内で調整が必要なら行う（あるいは可視化のため1回分とする）
-        cycles = 21
+    # サイクル数
+    if mnemonic in ["LDIR", "LDDR"]: cycles = 21
+    elif mnemonic in ["RETI", "RETN"]: cycles = 14
+    elif mnemonic.startswith("IM "): cycles = 8
+    else: cycles = 16
 
     return Operation(
         opcode_hex="ED",
@@ -404,9 +450,10 @@ def execute_ed(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
             # PCをこの命令の先頭に戻すことで、次のstepで再び実行されるようにする
             # Z80Cpu.step 内で既に length=2 分進んでいるため、-2 する
             state.pc = (state.pc - 2) & 0xFFFF
-            # 繰り返し時のサイクル数は21 (通常16 + 5)
-            # ここではoperation.cycle_countは既に返されているので、累積に影響させるには工夫が必要
-            # 今回は簡易的にそのまま進める
+    elif ed_opcode in [0x46, 0x56, 0x5E]:
+        execute_im(state, bus, operation)
+    elif ed_opcode in [0x4D, 0x45]:
+        execute_reti_retn(state, bus, operation)
 
 def execute_cb(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
     """CBプレフィックス命令を実行します。"""
@@ -622,6 +669,213 @@ def execute_jr_cc_e(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
             offset -= 256
         state.pc = (state.pc + offset) & 0xFFFF
 
+# @intent:responsibility オペコード0x08 (EX AF,AF') をデコードします。
+def decode_08(opcode: int, bus: Bus, pc: int) -> Operation:
+    """EX AF,AF'命令をデコードします。"""
+    return Operation(opcode_hex="08", mnemonic="EX AF,AF'", operands=[], cycle_count=4, length=1)
+
+# @intent:responsibility オペコード0xEB (EX DE,HL) をデコードします。
+def decode_eb(opcode: int, bus: Bus, pc: int) -> Operation:
+    """EX DE,HL命令をデコードします。"""
+    return Operation(opcode_hex="EB", mnemonic="EX DE,HL", operands=[], cycle_count=4, length=1)
+
+# @intent:responsibility オペコード0xD9 (EXX) をデコードします。
+def decode_d9(opcode: int, bus: Bus, pc: int) -> Operation:
+    """EXX命令をデコードします。"""
+    return Operation(opcode_hex="D9", mnemonic="EXX", operands=[], cycle_count=4, length=1)
+
+# @intent:responsibility オペコード0xE3 (EX (SP),HL) をデコードします。
+def decode_e3(opcode: int, bus: Bus, pc: int) -> Operation:
+    """EX (SP),HL命令をデコードします。"""
+    return Operation(opcode_hex="E3", mnemonic="EX (SP),HL", operands=[], cycle_count=19, length=1)
+
+def execute_08(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """EX AF,AF'命令を実行します。"""
+    state.af, state.af_ = state.af_, state.af
+
+def execute_eb(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """EX DE,HL命令を実行します。"""
+    state.de, state.hl = state.hl, state.de
+
+def execute_d9(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """EXX命令を実行します。"""
+    state.bc, state.bc_ = state.bc_, state.bc
+    state.de, state.de_ = state.de_, state.de
+    state.hl, state.hl_ = state.hl_, state.hl
+
+def execute_e3(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """EX (SP),HL命令を実行します。"""
+    # Low byte
+    low = bus.read(state.sp)
+    bus.write(state.sp, state.l)
+    state.l = low
+    # High byte
+    high = bus.read(state.sp + 1)
+    bus.write(state.sp + 1, state.h)
+    state.h = high
+
+# @intent:responsibility オペコード0xDD / 0xFD (IX/IY プレフィックス) をデコードします。
+def decode_ix_iy(opcode: int, bus: Bus, pc: int) -> Operation:
+    """IX/IY プレフィックス命令をデコードします。"""
+    prefix = opcode
+    reg_name = "IX" if prefix == 0xDD else "IY"
+    next_opcode = bus.read(pc + 1)
+    
+    # 0x21: LD IX/IY, nn
+    if next_opcode == 0x21:
+        nn_low = bus.read(pc + 2)
+        nn_high = bus.read(pc + 3)
+        nn = (nn_high << 8) | nn_low
+        return Operation(
+            opcode_hex=f"{prefix:02X}21",
+            mnemonic=f"LD {reg_name},nn",
+            operands=[f"${nn:04X}"],
+            cycle_count=14,
+            length=4,
+            operand_bytes=[nn_low, nn_high]
+        )
+    
+    # 0x09, 0x19, 0x29, 0x39: ADD IX/IY, ss
+    if (next_opcode & 0xCF) == 0x09:
+        ss_code = (next_opcode >> 4) & 0b11
+        ss_name = _get_ss_reg_name(ss_code)
+        if ss_name == "HL": ss_name = reg_name
+        return Operation(
+            opcode_hex=f"{prefix:02X}{next_opcode:02X}",
+            mnemonic=f"ADD {reg_name},{ss_name}",
+            operands=[],
+            cycle_count=15,
+            length=2
+        )
+
+    # 0x23: INC IX/IY
+    if next_opcode == 0x23:
+        return Operation(
+            opcode_hex=f"{prefix:02X}23",
+            mnemonic=f"INC {reg_name}",
+            operands=[],
+            cycle_count=10,
+            length=2
+        )
+
+    # 0xE3: EX (SP), IX/IY
+    if next_opcode == 0xE3:
+        return Operation(
+            opcode_hex=f"{prefix:02X}E3",
+            mnemonic=f"EX (SP),{reg_name}",
+            operands=[],
+            cycle_count=23,
+            length=2
+        )
+
+    # (IX+d) 系の命令 (一部のみ実装)
+    # LD r, (IX+d) -> 0xDD 0x46, 0x4E, 0x56, 0x5E, 0x66, 0x6E, 0x7E
+    if (next_opcode & 0xC7) == 0x46 and next_opcode != 0x76:
+        dest_reg_code = (next_opcode >> 3) & 0b111
+        dest_reg_name = _get_register_name(dest_reg_code)
+        d = bus.read(pc + 2)
+        return Operation(
+            opcode_hex=f"{prefix:02X}{next_opcode:02X}",
+            mnemonic=f"LD {dest_reg_name},({reg_name}+{d:02X}H)",
+            operands=[],
+            cycle_count=19,
+            length=3,
+            operand_bytes=[d]
+        )
+    
+    # LD (IX+d), r -> 0xDD 0x70-0x77 (except 0x76)
+    if (next_opcode & 0xF8) == 0x70 and next_opcode != 0x76:
+        src_reg_code = next_opcode & 0b111
+        src_reg_name = _get_register_name(src_reg_code)
+        d = bus.read(pc + 2)
+        return Operation(
+            opcode_hex=f"{prefix:02X}{next_opcode:02X}",
+            mnemonic=f"LD ({reg_name}+{d:02X}H),{src_reg_name}",
+            operands=[],
+            cycle_count=19,
+            length=3,
+            operand_bytes=[d]
+        )
+
+    return Operation(opcode_hex=f"{prefix:02X}", mnemonic=f"{reg_name} prefix", operands=[], cycle_count=4, length=1)
+
+def execute_ld_ix_iy_nn(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    prefix = int(operation.opcode_hex[:2], 16)
+    nn_low, nn_high = operation.operand_bytes
+    val = (nn_high << 8) | nn_low
+    if prefix == 0xDD: state.ix = val
+    else: state.iy = val
+
+def execute_add_ix_iy_ss(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    prefix = int(operation.opcode_hex[:2], 16)
+    next_opcode = int(operation.opcode_hex[2:], 16)
+    ss_code = (next_opcode >> 4) & 0b11
+    ss_name = _get_ss_reg_name(ss_code).lower()
+    
+    base_val = state.ix if prefix == 0xDD else state.iy
+    
+    if ss_name == "hl": # ADD IX, IX / ADD IY, IY
+        add_val = base_val
+    else:
+        add_val = getattr(state, ss_name)
+    
+    result = base_val + add_val
+    # 16ビット加算のフラグ更新 (ADD HL,ssと同様だがHLをbase_valに読み替える)
+    update_flags_add16(state, base_val, add_val, result)
+    
+    if prefix == 0xDD: state.ix = result & 0xFFFF
+    else: state.iy = result & 0xFFFF
+
+def execute_inc_ix_iy(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    prefix = int(operation.opcode_hex[:2], 16)
+    if prefix == 0xDD: state.ix = (state.ix + 1) & 0xFFFF
+    else: state.iy = (state.iy + 1) & 0xFFFF
+
+def execute_ex_sp_ix_iy(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    prefix = int(operation.opcode_hex[:2], 16)
+    # Low byte
+    low = bus.read(state.sp)
+    if prefix == 0xDD:
+        bus.write(state.sp, state.ix & 0xFF)
+        state.ix = (state.ix & 0xFF00) | low
+    else:
+        bus.write(state.sp, state.iy & 0xFF)
+        state.iy = (state.iy & 0xFF00) | low
+    # High byte
+    high = bus.read(state.sp + 1)
+    if prefix == 0xDD:
+        bus.write(state.sp + 1, (state.ix >> 8) & 0xFF)
+        state.ix = (state.ix & 0x00FF) | (high << 8)
+    else:
+        bus.write(state.sp + 1, (state.iy >> 8) & 0xFF)
+        state.iy = (state.iy & 0x00FF) | (high << 8)
+
+def execute_ld_r_ix_iy_d(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    prefix = int(operation.opcode_hex[:2], 16)
+    next_opcode = int(operation.opcode_hex[2:], 16)
+    dest_reg_code = (next_opcode >> 3) & 0b111
+    dest_reg_name = _get_register_name(dest_reg_code)
+    d = operation.operand_bytes[0]
+    if d >= 128: d -= 256
+    
+    base_val = state.ix if prefix == 0xDD else state.iy
+    addr = (base_val + d) & 0xFFFF
+    val = bus.read(addr)
+    _set_register_value(state, bus, dest_reg_name, val)
+
+def execute_ld_ix_iy_d_r(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    prefix = int(operation.opcode_hex[:2], 16)
+    next_opcode = int(operation.opcode_hex[2:], 16)
+    src_reg_code = next_opcode & 0b111
+    src_reg_name = _get_register_name(src_reg_code)
+    d = operation.operand_bytes[0]
+    if d >= 128: d -= 256
+    
+    base_val = state.ix if prefix == 0xDD else state.iy
+    addr = (base_val + d) & 0xFFFF
+    val = _get_register_value(state, bus, src_reg_name)
+    bus.write(addr, val)
+
 # @intent:responsibility オペコード0xDB (IN A,(n)) をデコードします。
 def decode_db(opcode: int, bus: Bus, pc: int) -> Operation:
     """IN A,(n)命令をデコードします。"""
@@ -665,15 +919,23 @@ def execute_d3(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
 
 DECODE_MAP = {
     0x00: decode_00,
+    0x08: decode_08,
     0x10: decode_10,
     0x76: decode_76,
     0xCB: decode_cb,
+    0xDD: decode_ix_iy,
     0xED: decode_ed,
+    0xFD: decode_ix_iy,
     0xC3: decode_c3,
     0xC9: decode_c9,
     0xCD: decode_cd,
     0xDB: decode_db,
     0xD3: decode_d3,
+    0xD9: decode_d9,
+    0xE3: decode_e3,
+    0xEB: decode_eb,
+    0xF3: decode_f3,
+    0xFB: decode_fb,
     0x18: decode_18,
     0xFE: decode_fe,
     **{op: decode_ld_ss_nn for op in range(0x01, 0x40, 0x10)}, # LD BC/DE/HL/SP, nn
@@ -693,6 +955,7 @@ DECODE_MAP = {
 
 EXECUTE_MAP = {
     0x00: execute_00,
+    0x08: execute_08,
     0x10: execute_10,
     0x76: execute_76,
     0xCB: execute_cb,
@@ -702,6 +965,11 @@ EXECUTE_MAP = {
     0xCD: execute_cd,
     0xDB: execute_db,
     0xD3: execute_d3,
+    0xD9: execute_d9,
+    0xE3: execute_e3,
+    0xEB: execute_eb,
+    0xF3: execute_f3,
+    0xFB: execute_fb,
     0x18: execute_18,
     0xFE: execute_fe,
     **{op: execute_ld_ss_nn for op in range(0x01, 0x40, 0x10)},
@@ -717,6 +985,22 @@ EXECUTE_MAP = {
     **{op: execute_logic_r for op in range(0xA0, 0xB8)},
     **{op: execute_push_pop for op in range(0xC5, 0x100, 0x10)},
     **{op: execute_push_pop for op in range(0xC1, 0x100, 0x10)},
+    # IX/IY Instructions
+    **{(0xDD00 | op): execute_ld_r_ix_iy_d for op in range(0x40, 0x70) if (op & 0xC7) == 0x46},
+    **{(0xDD00 | op): execute_ld_r_ix_iy_d for op in [0x7E]},
+    **{(0xDD00 | op): execute_ld_ix_iy_d_r for op in range(0x70, 0x78) if op != 0x76},
+    0xDD21: execute_ld_ix_iy_nn,
+    0xDD23: execute_inc_ix_iy,
+    0xDDE3: execute_ex_sp_ix_iy,
+    **{(0xDD00 | op): execute_add_ix_iy_ss for op in range(0x09, 0x40, 0x10)},
+    
+    **{(0xFD00 | op): execute_ld_r_ix_iy_d for op in range(0x40, 0x70) if (op & 0xC7) == 0x46},
+    **{(0xFD00 | op): execute_ld_r_ix_iy_d for op in [0x7E]},
+    **{(0xFD00 | op): execute_ld_ix_iy_d_r for op in range(0x70, 0x78) if op != 0x76},
+    0xFD21: execute_ld_ix_iy_nn,
+    0xFD23: execute_inc_ix_iy,
+    0xFDE3: execute_ex_sp_ix_iy,
+    **{(0xFD00 | op): execute_add_ix_iy_ss for op in range(0x09, 0x40, 0x10)},
 }
 
 # @intent:responsibility 与えられたオペコードをZ80の命令としてデコードします。

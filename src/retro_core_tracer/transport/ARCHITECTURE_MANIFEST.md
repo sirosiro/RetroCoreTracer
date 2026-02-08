@@ -146,6 +146,9 @@
     - `write(self, address: int, data: int) -> None`:
         - **責務:** 指定された物理アドレスに8bitのデータを書き込む。対応するデバイスを見つけ、その`write`メソッドを呼び出し、アクセスをログに記録する。
         - **前提条件:** `address`はマップされたデバイスの有効範囲内であり、`data`は8bit値（0〜255）である必要がある。
+    - `peek(self, address: int) -> int`:
+        - **責務:** 指定された物理アドレスから8bitのデータを読み出すが、**アクセスログには記録しない**。
+        - **用途:** UIコンポーネント（HexView, StackViewなど）が、シミュレーションの状態（バスログ）に影響を与えずにメモリ内容を表示するために使用する。
     - `read_io(self, address: int) -> int`:
         - **責務:** 指定されたI/Oポートアドレスから8bitのデータを読み出し、ログに記録する。
     - `write_io(self, address: int, data: int) -> None`:

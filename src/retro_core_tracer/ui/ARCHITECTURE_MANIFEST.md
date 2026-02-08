@@ -102,6 +102,7 @@
 
 #### 4.3. HexView (メモリビュー)
 - **責務 (Responsibility):** メモリの内容を16進数およびASCII形式で表示する。指定されたアドレス（例：PC）をハイライト表示する機能を持つ。
+- **設計上の決定:** メモリ読み込みには `Bus.peek()` を使用し、シミュレータのバスアクティビティログを汚染しないようにする。
 - **提供するAPI (Public API):**
     - `update_memory(bus: Bus, start_address: int, length: int, highlight_address: Optional[int]) -> None`:
         - 指定された範囲のメモリをバスから読み込み、表示を更新する。`highlight_address`が指定された場合、該当行を強調表示する。
