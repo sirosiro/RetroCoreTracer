@@ -2,18 +2,18 @@
 逆アセンブルコードを表示するウィジェット。
 """
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtCore import Qt
-from retro_core_tracer.transport.bus import Bus
-from retro_core_tracer.arch.z80.disassembler import disassemble
+from typing import Dict, Optional, Tuple, List
+
+from retro_core_tracer.core.cpu import AbstractCpu
 from retro_core_tracer.ui.fonts import get_monospace_font
 
-from typing import Dict
-
-# @intent:responsibility 逆アセンブルされたコードを表形式で表示し、現在のPCをハイライトするUIウィジェットを提供します。
+# @intent:responsibility 逆アセンブルされたコードを表形式で表示し、現在のPCをハイライトする汎用UIウィジェットを提供します。
 class CodeView(QWidget):
     """
     逆アセンブルコードを表示するウィジェット。
+    AbstractCpuのdisassembleメソッドを利用します。
     """
     # @intent:responsibility CodeViewウィジェットを初期化し、テーブルを設定します。
     def __init__(self, parent=None):
@@ -42,15 +42,18 @@ class CodeView(QWidget):
         
         self.layout.addWidget(self.table)
         
-        self.current_pc = -1
-        self.cache_start_addr = -1
-        self.cache_range = 64 # 表示するバイト数の範囲（前後）
+        self._cpu: Optional[AbstractCpu] = None
         
         # 現在表示している逆アセンブルデータ [(addr, hex, mnemonic), ...]
-        self.disassembled_data = []
+        self.disassembled_data: List[Tuple[int, str, str]] = []
         
         # シンボルマップ (Label -> Address) の逆引き用 (Address -> Label)
         self.reverse_symbol_map: Dict[int, str] = {}
+
+    # @intent:responsibility 表示対象のCPUを設定します。
+    def set_cpu(self, cpu: AbstractCpu):
+        self._cpu = cpu
+        self.reset_cache()
 
     # @intent:responsibility 表示に使用するシンボルマップを設定します。
     def set_symbol_map(self, symbol_map: Dict[str, int]):
@@ -62,11 +65,14 @@ class CodeView(QWidget):
         self.reset_cache() # 表示更新のためにキャッシュをクリア
 
     # @intent:responsibility 指定されたPC周辺のメモリを逆アセンブルして表示を更新します。
-    def update_code(self, bus: Bus, pc: int):
+    def update_code(self, pc: int):
         """
         現在のPC周辺のコードを逆アセンブルして表示します。
         PCが現在の表示範囲内にあれば、再描画せずにハイライト移動のみ行います。
         """
+        if not self._cpu:
+            return
+
         # 現在のデータ内にPCが含まれているかチェック
         pc_in_range = False
         row_index = -1
@@ -82,7 +88,8 @@ class CodeView(QWidget):
             start_addr = pc
             length = 4096 # 表示範囲を4KBに拡大（約1000〜4000命令分）
             
-            self.disassembled_data = disassemble(bus, start_addr, length)
+            # AbstractCpu.disassemble を使用して逆アセンブル
+            self.disassembled_data = self._cpu.disassemble(start_addr, length)
             
             self.table.setRowCount(len(self.disassembled_data))
             

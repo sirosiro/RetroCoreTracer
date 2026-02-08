@@ -227,11 +227,11 @@ class MainWindow(QMainWindow):
         cycle_count = snapshot.metadata.cycle_count
         self.statusBar().showMessage(f"Stopped | T-States: {cycle_count}")
         
-        self.register_view.update_registers(snapshot)
-        self.flag_view.update_flags(snapshot)
+        self.register_view.update_registers()
+        self.flag_view.update_flags()
         self.hex_view.update_memory(self.bus, snapshot.state.pc, 256, highlight_address=snapshot.state.pc)
         self.stack_view.update_stack(self.bus, snapshot.state.sp)
-        self.code_view.update_code(self.bus, snapshot.state.pc)
+        self.code_view.update_code(snapshot.state.pc)
 
     @Slot(BreakpointCondition)
     def _add_breakpoint_to_debugger(self, condition: BreakpointCondition):
@@ -317,6 +317,11 @@ class MainWindow(QMainWindow):
                 builder = SystemBuilder()
                 self.cpu, self.bus = builder.build_system(config)
                 
+                # Re-initialize Views with new CPU
+                self.register_view.set_cpu(self.cpu)
+                self.flag_view.set_cpu(self.cpu)
+                self.code_view.set_cpu(self.cpu)
+
                 # Re-initialize Debugger with new CPU
                 self.debugger = Debugger(self.cpu)
                 self.debugger_thread = DebuggerThread(self.debugger)
@@ -405,6 +410,11 @@ class MainWindow(QMainWindow):
         self.stack_dock.setWidget(self.stack_view)
         self.addDockWidget(Qt.RightDockWidgetArea, self.stack_dock)
         self.view_menu.addAction(self.stack_dock.toggleViewAction())
+        
+        # Initialize views with CPU
+        self.register_view.set_cpu(self.cpu)
+        self.flag_view.set_cpu(self.cpu)
+        self.code_view.set_cpu(self.cpu)
 
     # @intent:responsibility 初回起動時のデフォルトレイアウトを設定します。
     def _setup_initial_layout(self):

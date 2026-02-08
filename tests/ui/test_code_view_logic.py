@@ -38,6 +38,8 @@ class TestCodeViewLogic:
         bus.write(0x2000, 0x76)
 
         code_view = CodeView()
+        cpu = Z80Cpu(bus)
+        code_view.set_cpu(cpu)
         return code_view, bus
 
     def test_initial_update(self, setup_code_view):
@@ -45,7 +47,7 @@ class TestCodeViewLogic:
         pc = 0x1000
         
         # 1. 初回の更新
-        code_view.update_code(bus, pc)
+        code_view.update_code(pc)
         
         # データが生成されているか確認
         assert len(code_view.disassembled_data) > 0
@@ -61,11 +63,11 @@ class TestCodeViewLogic:
         pc2 = 0x1001 # 次の命令
         
         # 1. 初回の更新 (PC=0x1000)
-        code_view.update_code(bus, pc1)
+        code_view.update_code(pc1)
         initial_data_id = id(code_view.disassembled_data) # オブジェクトIDを保存
         
         # 2. 範囲内での更新 (PC=0x1001)
-        code_view.update_code(bus, pc2)
+        code_view.update_code(pc2)
         
         # データが再生成されていない（キャッシュが効いている）ことを確認
         assert id(code_view.disassembled_data) == initial_data_id
@@ -78,12 +80,12 @@ class TestCodeViewLogic:
         pc_far = 0x2000 # 遠くのアドレス
         
         # 1. 初回の更新 (PC=0x1000)
-        code_view.update_code(bus, pc1)
+        code_view.update_code(pc1)
         initial_data_id = id(code_view.disassembled_data)
         
         # 2. 範囲外への更新 (PC=0x2000)
         # 0x2000は0x1000からの128バイト範囲には含まれないはず
-        code_view.update_code(bus, pc_far)
+        code_view.update_code(pc_far)
         
         # データが再生成されていることを確認
         assert id(code_view.disassembled_data) != initial_data_id

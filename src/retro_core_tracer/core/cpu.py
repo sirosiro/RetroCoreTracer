@@ -6,12 +6,12 @@ Core Layer (抽象CPU)
 具体的な命令の振る舞いはInstruction Layerに移譲されます。
 """
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 
 from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.core.snapshot import Snapshot, Operation, Metadata
 from retro_core_tracer.core.state import CpuState
-from retro_core_tracer.common.types import SymbolMap
+from retro_core_tracer.common.types import SymbolMap, RegisterLayoutInfo
 
 # @intent:responsibility 抽象CPUの基本機能とインターフェースを定義します。
 class AbstractCpu(ABC):
@@ -136,4 +136,33 @@ class AbstractCpu(ABC):
             metadata=Metadata(cycle_count=self._cycle_count, symbol_info=symbol_info)
         )
         return snapshot
+
+    @abstractmethod
+    def get_register_map(self) -> Dict[str, int]:
+        """
+        現在のレジスタ値を辞書形式で返す。
+        UIがCPUの内部構造を知らなくても値を表示できるようにするために使用される。
+        """
+        pass
+
+    @abstractmethod
+    def get_register_layout(self) -> List[RegisterLayoutInfo]:
+        """
+        レジスタをUI上でどのように配置・グループ化すべきかの定義を返す。
+        """
+        pass
+
+    @abstractmethod
+    def get_flag_state(self) -> Dict[str, bool]:
+        """
+        現在のフラグ（ステータスレジスタ）の各ビットの状態を辞書形式で返す。
+        """
+        pass
+
+    @abstractmethod
+    def disassemble(self, start_addr: int, length: int) -> List[Tuple[int, str, str]]:
+        """
+        指定されたメモリ範囲を逆アセンブルし、(address, hex_bytes, mnemonic) のタプルリストを返す。
+        """
+        pass
 

@@ -6,22 +6,18 @@ Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ
 
 ![Retro Core Tracer Main Window](./docs/assets/Main-window-snapshot.png)
 
-現在は **Z80** アーキテクチャに対応しています。
-
 ## ✨ 特徴
 
+*   **マルチアーキテクチャ対応基盤:** UI層が特定のCPU実装から完全に分離されており、メタデータ駆動（Data-Driven）で動的にレジスタやフラグを表示します。現在は **Z80** に対応しており、今後 **MC6800** 等の追加が容易な設計です。
 *   **教育的透明性 (Transparency):** レジスタの変化、フラグの更新、スタックの積み上げなど、CPUの内部状態を隠さず全て表示します。
 *   **Pure Bus Logging (純粋なバス監視):** UI描画のためのメモリ読み出し（Peek）と、CPUによる実際の実行アクセス（Read/Write）を厳密に区別。**「画面上でバスが光った＝確実にCPUがアクセスした」** という信頼性を提供します。
-*   **Visualized Block Transfer:** `LDIR` などのブロック転送命令において、結果を一括更新するのではなく、1バイト転送ごとにステップ実行が可能。データがメモリ上を流れていく様子をアニメーションのように観察できます。
+*   **Visualized Block Transfer:** `LDIR` などのブロック転送命令において、結果を一括更新するのではなく、1バイト転送ごとにステップ実行が可能。データがメモリ上を流いていく様子をアニメーションのように観察できます。
 *   **Snapshotベースの可視化:** 1命令ごとのCPU状態を不変（Immutable）なスナップショットとして記録。UIとコアロジックが完全に分離されています。
 *   **モダンで柔軟なUI:** PySide6 (Qt) を採用。ドラッグ＆ドロップで各ビューを自由に配置（上下分割・タブ化）できるドッキングウィンドウシステムを搭載。
-*   **詳細なインスペクタ:**
-    *   **Code View (Assembler):** 逆アセンブル結果とシンボル（ラベル）の表示。現在の実行位置をハイライト。
-    *   **HEX View:** メモリ内容のリアルタイム表示とハイライト。
-    *   **Register View:** 全レジスタ（裏レジスタ含む）の状態表示。
-    *   **Flag View:** フラグレジスタの各ビットの状態を可視化。
-    *   **Stack View:** スタックポインタ周辺のメモリを可視化。
-    *   **Breakpoints:** PC一致、メモリ読み書き、レジスタ変化など、柔軟な条件でのブレークポイント設定。
+*   **直感的なデバッグ操作:**
+    *   **Breakpoints:** PC一致、メモリ読み書き、レジスタ変化など、柔軟な条件設定。右クリックメニューや `Delete` キーによる直感的な削除、`Enter` キーによる素早い削除承認をサポート。
+    *   **Code View:** アーキテクチャに依存しない汎用的な逆アセンブラ表示。実行予定の次行が常に見えるスマートスクロール機能を搭載。
+    *   **HEX / Register / Flag / Stack View:** 全ての内部状態をリアルタイムに可視化。
 
 ### 対応するZ80命令セット (Implemented Instructions)
 *   **転送命令:** `LD r,n`, `LD r,r'`, `LD ss,nn`, `LD HL,nn`, `PUSH`, `POP`
@@ -84,7 +80,7 @@ python -m retro_core_tracer.ui.app
     *   `Step`: 1命令ずつ実行します。
     *   `Run`: 連続実行します。
     *   `Stop`: 実行を停止します。
-3.  **Breakpoints:** `Breakpoints` タブで条件を追加し、特定の状態で実行を一時停止できます。
+3.  **Breakpoints:** `Breakpoints` タブで条件を追加し、特定の状態で実行を一時停止できます。右クリックや `Delete` キーで削除可能です。
 
 ## 🛠️ 開発について
 
@@ -100,7 +96,7 @@ python -m retro_core_tracer.ui.app
     *   [`arch/z80/`](src/retro_core_tracer/arch/z80/ARCHITECTURE_MANIFEST.md): Z80固有の実装。
     *   [`debugger/`](src/retro_core_tracer/debugger/ARCHITECTURE_MANIFEST.md): 実行制御とブレークポイント。
     *   [`loader/`](src/retro_core_tracer/loader/ARCHITECTURE_MANIFEST.md): HEXファイルローダー。
-    *   [`ui/`](src/retro_core_tracer/ui/ARCHITECTURE_MANIFEST.md): PySide6によるユーザーインターフェース。
+    *   [`ui/`](src/retro_core_tracer/ui/ARCHITECTURE_MANIFEST.md): PySide6による汎用ユーザーインターフェース。
 *   `examples/`: サンプルプログラム（例: `z80_sample.hex`）。
 *   `tests/`: 各コンポーネントのユニットテスト。
 *   `docs/`: ドキュメントとリソース。

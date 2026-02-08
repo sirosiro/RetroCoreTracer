@@ -10,6 +10,9 @@ from retro_core_tracer.arch.z80.state import Z80CpuState
 from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.core.snapshot import Operation, Metadata, Snapshot # Snapshotも必要
 from retro_core_tracer.arch.z80.instructions import decode_opcode, execute_instruction
+from retro_core_tracer.arch.z80 import disassembler
+from typing import Dict, List, Tuple
+from retro_core_tracer.common.types import RegisterLayoutInfo, RegisterInfo
 
 # @intent:responsibility Z80 CPUの具体的なエミュレーションロジックを提供します。
 class Z80Cpu(AbstractCpu):
@@ -102,3 +105,45 @@ class Z80Cpu(AbstractCpu):
             bus_activity=bus_activity, # Actual bus activity
         )
         return snapshot
+
+    def get_register_map(self) -> Dict[str, int]:
+        s = self._state
+        return {
+            "A": s.a, "F": s.f, "B": s.b, "C": s.c, "D": s.d, "E": s.e, "H": s.h, "L": s.l,
+            "A'": s.a_, "F'": s.f_, "B'": s.b_, "C'": s.c_, "D'": s.d_, "E'": s.e_, "H'": s.h_, "L'": s.l_,
+            "IX": s.ix, "IY": s.iy, "SP": s.sp, "PC": s.pc,
+            "I": s.i, "R": s.r,
+            "AF": s.af, "BC": s.bc, "DE": s.de, "HL": s.hl,
+            "AF'": s.af_, "BC'": s.bc_, "DE'": s.de_, "HL'": s.hl_,
+            "IM": s.im
+        }
+
+    def get_register_layout(self) -> List[RegisterLayoutInfo]:
+        return [
+            RegisterLayoutInfo("Main Registers", [
+                RegisterInfo("AF", 16), RegisterInfo("BC", 16), RegisterInfo("DE", 16), RegisterInfo("HL", 16)
+            ]),
+            RegisterLayoutInfo("Alternate Registers", [
+                RegisterInfo("AF'", 16), RegisterInfo("BC'", 16), RegisterInfo("DE'", 16), RegisterInfo("HL'", 16)
+            ]),
+            RegisterLayoutInfo("Index & Control", [
+                RegisterInfo("IX", 16), RegisterInfo("IY", 16), RegisterInfo("SP", 16), RegisterInfo("PC", 16)
+            ]),
+            RegisterLayoutInfo("Special", [
+                RegisterInfo("I", 8), RegisterInfo("R", 8), RegisterInfo("IM", 8)
+            ])
+        ]
+
+    def get_flag_state(self) -> Dict[str, bool]:
+        s = self._state
+        return {
+            "S": s.flag_s,
+            "Z": s.flag_z,
+            "H": s.flag_h,
+            "PV": s.flag_pv,
+            "N": s.flag_n,
+            "C": s.flag_c
+        }
+
+    def disassemble(self, start_addr: int, length: int) -> List[Tuple[int, str, str]]:
+        return disassembler.disassemble(self._bus, start_addr, length)

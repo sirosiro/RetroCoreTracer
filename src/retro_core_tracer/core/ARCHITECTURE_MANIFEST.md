@@ -147,6 +147,21 @@
         - **責務:** フェッチされたオペコードを解析し、その命令の詳細（ニーモニック、オペランドなど）を`Operation`オブジェクトとして返す。
     - `_execute(self, operation: Operation) -> None`:
         - **責務:** デコードされた命令を実行し、レジスタやフラグなどのCPUの状態を更新する。
+    - `get_register_map(self) -> Dict[str, int]`:
+        - **責務:** 現在のレジスタ値を辞書形式で返す。UI（RegisterView）がCPUの内部構造を知らなくても値を表示できるようにするために使用される。
+        - **戻り値:** `Key`: レジスタ名（例: "A", "PC"）, `Value`: 現在の値。
+    - `get_register_layout(self) -> List[RegisterLayoutInfo]`:
+        - **責務:** レジスタをUI上でどのように配置・グループ化すべきかの定義を返す。
+        - **戻り値:** レジスタレイアウト情報のリスト。
+    - `get_flag_state(self) -> Dict[str, bool]`:
+        - **責務:** 現在のフラグ（ステータスレジスタ）の各ビットの状態を辞書形式で返す。
+        - **戻り値:** `Key`: フラグ名（例: "Z", "C"）, `Value`: ON/OFF状態。
+    - `disassemble(self, start_addr: int, length: int) -> List[Tuple[int, str, str]]`:
+        - **責務:** 指定されたメモリ範囲を逆アセンブルし、アドレス、バイト列、ニーモニックのタプルリストを返す。
+        - **引数:**
+            - `start_addr`: 開始アドレス。
+            - `length`: バイト長。
+        - **戻り値:** `(address, hex_bytes, mnemonic)` のリスト。
 - **主要なデータ構造 (Key Data Structures):**
     - `_bus: Bus`: システムの共通バスインスタンスへの参照。
     - `_state: CpuState`: 現在のCPUのレジスタ状態を保持する`CpuState`インスタンス。

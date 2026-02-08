@@ -140,6 +140,14 @@
             6. `_execute()`により命令を実行する。
             7. `self._bus.get_and_clear_activity_log()`を呼び出し、このサイクル中に発生した全てのバスアクティビティを取得する。
             8. 実行後の`Z80CpuState`、`Operation`、`Metadata`（`cycle_count`と`symbol_info`を含む）、および取得した`bus_activity`を含む`Snapshot`オブジェクトを構築し、返す。
+    - `get_register_map(self) -> Dict[str, int]`:
+        - **責務:** `Z80CpuState`の各レジスタ（AF, BC, DE, HL, IX, IY, SP, PC, I, R, AF', BC', DE', HL'）の現在の値を辞書形式で返す。
+    - `get_register_layout(self) -> List[RegisterLayoutInfo]`:
+        - **責務:** Z80のレジスタ構成（8bit/16bit、メイン/代替/インデックス/特殊グループ）を定義する静的なレイアウト情報を返す。
+    - `get_flag_state(self) -> Dict[str, bool]`:
+        - **責務:** フラグレジスタ（F）から S, Z, H, PV, N, C の各フラグの状態を抽出し、辞書形式で返す。
+    - `disassemble(self, start_addr: int, length: int) -> List[Tuple[int, str, str]]`:
+        - **責務:** 内部の`disassembler`モジュールに処理を委譲し、指定範囲の逆アセンブル結果を返す。
 - **主要なデータ構造 (Key Data Structures):**
     - `self._state: Z80CpuState`: `AbstractCpu`から継承されるCPUの状態。
 - **重要なアルゴリズム (Key Algorithms):**

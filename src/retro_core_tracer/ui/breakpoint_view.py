@@ -4,8 +4,9 @@
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit,
-    QPushButton, QListWidget, QListWidgetItem, QInputDialog, QMessageBox
+    QPushButton, QListWidget, QListWidgetItem, QInputDialog, QMessageBox, QMenu
 )
+from PySide6.QtGui import QAction, QKeyEvent
 from PySide6.QtCore import Qt, Signal, Slot
 from typing import List, Optional, Dict
 
@@ -90,9 +91,24 @@ class BreakpointView(QWidget):
         # --------------------
         # 既存ブレークポイント一覧
         # --------------------
+        list_layout = QVBoxLayout()
+        list_layout.setContentsMargins(0, 0, 0, 0)
+
         self.bp_list_widget = QListWidget()
+        self.bp_list_widget.setSelectionMode(QListWidget.SingleSelection)
         self.bp_list_widget.itemDoubleClicked.connect(self._remove_breakpoint_from_list)
-        self.layout.addWidget(self.bp_list_widget)
+        self.bp_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.bp_list_widget.customContextMenuRequested.connect(self._show_context_menu)
+        list_layout.addWidget(self.bp_list_widget)
+
+        self.remove_button = QPushButton("Remove Selected")
+        self.remove_button.setEnabled(False)
+        self.remove_button.clicked.connect(self._remove_selected_breakpoint)
+        list_layout.addWidget(self.remove_button)
+
+        self.bp_list_widget.itemSelectionChanged.connect(self._on_selection_changed)
+
+        self.layout.addLayout(list_layout)
 
         # 初期状態のUIを更新
         self._on_type_changed(self.type_combo.currentIndex())
@@ -155,6 +171,7 @@ class BreakpointView(QWidget):
         return None
 
     # @intent:responsibility ユーザー入力に基づいて新しいブレークポイント条件を作成し、シグナルを発行します。
+    # @intent:rationale バリデーションはUI層で行い、無効なデータがCore層に渡らないように防御します。
     @Slot()
     def _add_breakpoint(self):
         bp_type: BreakpointConditionType = self.type_combo.currentData()
@@ -193,16 +210,6 @@ class BreakpointView(QWidget):
                 condition = BreakpointCondition(condition_type=bp_type, register_name=reg_name)
             
             if condition:
-                # 重複チェックはDebuggerクラスが担当するが、UIでも表示上の重複は避ける
-                for i in range(self.bp_list_widget.count()):
-                    item = self.bp_list_widget.item(i)
-                    existing_bp = item.data(Qt.UserRole)
-                    # Note: BreakpointCondition needs __eq__ for this to work perfectly, 
-                    # assuming dataclass provides it by default.
-                    if existing_bp == condition:
-                        QMessageBox.warning(self, "Duplicate Breakpoint", "This breakpoint already exists.")
-                        return
-
                 self.breakpoint_added.emit(condition) # MainWindowに通知
                 self._update_list() # リスト更新はMainWindowからのコールバックでやる方がクリーン
                 self.value_input.clear() # Clear input on success
@@ -224,14 +231,55 @@ class BreakpointView(QWidget):
         #     self.bp_list_widget.addItem(item)
         pass # Placeholder for actual update logic
 
+    # @intent:responsibility 選択状態の変化を監視し、削除ボタンの有効/無効を制御します。
+    # @intent:ux_design ユーザーに「今は削除できない」ことを視覚的にフィードバックするため、ボタンのEnabled状態を動的に切り替えます。
+    @Slot()
+    def _on_selection_changed(self):
+        self.remove_button.setEnabled(len(self.bp_list_widget.selectedItems()) > 0)
+
+    # @intent:responsibility 選択されたブレークポイントを削除リストから取得し、削除処理を委譲します。
+    @Slot()
+    def _remove_selected_breakpoint(self):
+        selected_items = self.bp_list_widget.selectedItems()
+        if not selected_items:
+            return
+        
+        item = selected_items[0]
+        # @intent:decision リスト操作の一貫性を保つため、実際の削除ロジックは _remove_breakpoint_from_list に集約し、ここからは呼び出すだけに留めます。
+        self._remove_breakpoint_from_list(item)
+
+    # @intent:responsibility コンテキストメニューを表示し、右クリックからの削除操作を提供します。
+    # @intent:ux_design デスクトップアプリケーションとしての標準的な操作感（右クリック削除）を提供するため。
+    @Slot(str)
+    def _show_context_menu(self, pos):
+        item = self.bp_list_widget.itemAt(pos)
+        if item:
+            menu = QMenu(self)
+            remove_action = menu.addAction("Remove Breakpoint")
+            action = menu.exec(self.bp_list_widget.mapToGlobal(pos))
+            if action == remove_action:
+                self._remove_breakpoint_from_list(item)
+
+    # @intent:responsibility キーボード操作による削除をサポートします。
+    # @intent:pre-condition 誤操作を防ぐため、リストウィジェットにフォーカスがある場合のみ削除を実行します。
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
+            # Only trigger if the list widget has focus or contains selected items
+            if self.bp_list_widget.hasFocus():
+                self._remove_selected_breakpoint()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
 
     # @intent:responsibility 選択されたブレークポイントの削除を確認し、削除シグナルを発行します。
+    # @intent:ux_design デバッグ作業のリズムを維持するため、デフォルトボタンを[Yes]に設定し、Enterキー等で素早く削除できるようにします。
     @Slot(QListWidgetItem)
     def _remove_breakpoint_from_list(self, item: QListWidgetItem):
         item_text = item.text() # Get text before item is potentially deleted
         reply = QMessageBox.question(self, "Remove Breakpoint", 
                                      f"Are you sure you want to remove breakpoint: {item_text}?",
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes:
             condition: BreakpointCondition = item.data(Qt.UserRole)
             if condition:
@@ -287,6 +335,10 @@ if __name__ == '__main__':
         def _fetch(self) -> int: return 0 # Dummy
         def _decode(self, opcode: int, bus: Bus, pc: int) -> Operation: return Operation("00", "NOP") # Dummy
         def _execute(self, operation: Operation, state: Z80CpuState, bus: Bus) -> None: pass # Dummy
+        def get_register_map(self) -> Dict[str, int]: return {}
+        def get_register_layout(self): return []
+        def get_flag_state(self) -> Dict[str, bool]: return {}
+        def disassemble(self, start_addr: int, length: int): return []
 
     class DummyDebugger(Debugger):
         def __init__(self, cpu: AbstractCpu):
