@@ -113,11 +113,14 @@
     - 全てのCPUエミュレーションの共通基盤を提供する。
     - `Bus`とのインターフェース、基本的な`CpuState`の管理を行う。
     - 命令サイクル（フェッチ→デコード→実行）の制御フローを抽象化する。
+    - **シンボル情報の管理:** 外部（ローダー等）から提供されたシンボル情報を保持し、実行時の可視化に利用する。
     - 具体的な命令の振る舞いや、CPU固有の状態管理は、派生クラス（Instruction Layer）に委譲する。
 - **提供するAPI (Public API):**
     - `__init__(self, bus: Bus)`:
         - **責務:** `AbstractCpu`インスタンスを初期化し、システムバスへの参照と初期`CpuState`を設定する。
         - **引数:** `bus` (Bus) - システムの共通バスインスタンス。
+    - `set_symbol_map(self, symbol_map: Dict[str, int]) -> None`:
+        - **責務:** シンボルマップを設定し、アドレスからの逆引きマップを内部的に構築する。
     - `reset(self) -> None`:
         - **責務:** CPUの状態を初期化時の状態にリセットする。
         - **設計上の決定:** `_create_initial_state()`を再呼び出しすることで、初期化ロジックの一貫性を保証する。
@@ -147,8 +150,11 @@
 - **主要なデータ構造 (Key Data Structures):**
     - `_bus: Bus`: システムの共通バスインスタンスへの参照。
     - `_state: CpuState`: 現在のCPUのレジスタ状態を保持する`CpuState`インスタンス。
+    - `_symbol_map: Dict[str, int]`: ロードされたシンボル（名前からアドレス）。
+    - `_reverse_symbol_map: Dict[int, str]`: アドレスからシンボル名への逆引きマップ。
 - **重要なアルゴリズム (Key Algorithms):**
     - **命令サイクル制御:** `step()`メソッドがフェッチ、デコード、実行のシーケンスを管理し、CPUの基本的な動作サイクルを駆動する。
+    - **実行時のシンボル解決:** `step()`メソッド内で実行前のPCを元に `_reverse_symbol_map` を引き、ラベル情報を `Snapshot.metadata.symbol_info` に自動的に付与する。
 - **状態とライフサイクル (State and Lifecycle):**
     - `AbstractCpu`インスタンスは、`bus`と`_state`への参照を保持し、アプリケーションのライフサイクルを通じて命令実行を制御する。
 

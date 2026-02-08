@@ -171,7 +171,7 @@ class TestZ80Cpu:
         assert snapshot1.operation.mnemonic == "NOP"
         assert isinstance(snapshot1, Snapshot)
         assert snapshot1.state == cpu.get_state()
-        assert snapshot1.metadata.symbol_info == f"PC: {initial_pc:#06x} -> NOP"
+        assert snapshot1.metadata.symbol_info == "NOP"
         assert snapshot1.metadata.cycle_count == 4 # 累積: 4
 
         # 2ステップ目: HALT
@@ -180,7 +180,7 @@ class TestZ80Cpu:
         assert snapshot2.operation.mnemonic == "HALT"
         assert isinstance(snapshot2, Snapshot)
         assert snapshot2.state == cpu.get_state()
-        assert snapshot2.metadata.symbol_info == f"PC: {initial_pc + 1:#06x} -> HALT"
+        assert snapshot2.metadata.symbol_info == "HALT"
         assert snapshot2.metadata.cycle_count == 8 # 累積: 4 + 4 = 8
 
         # HALT状態を解除 (割り込み発生などをシミュレート)
@@ -194,7 +194,7 @@ class TestZ80Cpu:
         assert cpu.get_state().a == 0xAA # レジスタAが更新されていることを確認
         assert isinstance(snapshot3, Snapshot)
         assert snapshot3.state == cpu.get_state()
-        assert snapshot3.metadata.symbol_info == f"PC: {initial_pc + 2:#06x} -> LD A,n"
+        assert snapshot3.metadata.symbol_info == "LD A,n $AA"
         assert snapshot3.metadata.cycle_count == 15 # 累積: 8 + 7 = 15
 
         # 4ステップ目: LD HL,nn
@@ -205,7 +205,7 @@ class TestZ80Cpu:
         assert cpu.get_state().hl == 0x1234 # レジスタHLが更新されていることを確認
         assert isinstance(snapshot4, Snapshot)
         assert snapshot4.state == cpu.get_state()
-        assert snapshot4.metadata.symbol_info == f"PC: {initial_pc + 4:#06x} -> LD HL,nn"
+        assert snapshot4.metadata.symbol_info == "LD HL,nn $1234"
         assert snapshot4.metadata.cycle_count == 25 # 累積: 15 + 10 = 25
 
         # 5ステップ目: UNKNOWN
@@ -215,5 +215,5 @@ class TestZ80Cpu:
         assert snapshot5.operation.operands == ["$FF"]
         assert isinstance(snapshot5, Snapshot)
         assert snapshot5.state == cpu.get_state()
-        assert snapshot5.metadata.symbol_info == f"PC: {initial_pc + 7:#06x} -> UNKNOWN"
+        assert snapshot5.metadata.symbol_info == "UNKNOWN $FF"
         assert snapshot5.metadata.cycle_count == 29 # 累積: 25 + 4 = 29

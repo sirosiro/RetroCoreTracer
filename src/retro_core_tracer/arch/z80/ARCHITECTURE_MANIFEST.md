@@ -66,27 +66,17 @@
 
 - **`cpu.py`**: `AbstractCpu` を継承した Z80 CPU のメイン実装。
 - **`state.py`**: Z80 固有のレジスタとフラグの状態定義。
-- **`instructions.py`**: Z80 命令のデコードと実行ロジック。
-- **`alu.py`**: 算術論理演算（ALU）およびフラグ更新の共通ロジック。
+- **`instructions/`**: Z80命令セットの実装パッケージ。
+    - **`__init__.py`**: 外部（`cpu.py`）に対するファサード。
+    - **`base.py`**: レジスタアクセス等の共通ヘルパー関数。
+    - **`alu.py`**: 算術論理演算命令の実装。
+    - **`load.py`**: 転送・ブロック転送命令の実装。
+    - **`control.py`**: 分岐・制御・ビット操作命令の実装。
+    - **`maps.py`**: デコード・実行関数のマッピング定義。
+- **`alu.py`**: フラグ計算の低レベルロジック（`instructions/alu.py`とは別、こちらは純粋な計算のみ）。
 - **`disassembler.py`**: メモリ上のバイナリをニーモニックに変換するロジック。
 
 ### 4. コンポーネント設計仕様 (Component Design Specifications)
----
-(Skipping existing 4.1, 4.2, 4.3 for brevity)
----
-#### 4.4. Z80Alu (ALUおよびフラグ計算、`alu.py`に実装)
-- **責務 (Responsibility):** Z80の算術・論理演算の結果に基づいて、フラグレジスタ（S, Z, H, P/V, N, C）を正確に計算・更新するロジックを集約する。
-- **提供するAPI (Public API):**
-    - `update_flags_add8(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 8ビット加算のフラグ更新。
-    - `update_flags_sub8(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 8ビット減算のフラグ更新。
-    - `update_flags_logic8(state: Z80CpuState, result: int) -> None`: 8ビット論理演算のフラグ更新。
-    - `update_flags_add16(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 16ビット加算のフラグ更新。
-
-#### 4.5. Z80Disassembler (逆アセンブラ、`disassembler.py`に実装)
-- **責務 (Responsibility):** 指定されたメモリ範囲のバイナリデータを解析し、Z80アセンブリ言語のニーモニック形式に変換する。
-- **提供するAPI (Public API):**
-    - `disassemble(bus: Bus, start_addr: int, length: int) -> List[str]`: メモリ上のデータを読み取り、ニーモニックのリストを返す。
-
 
 #### 4.1. Z80CpuState (データクラス)
 - **責務 (Responsibility):** `CpuState`を拡張し、Z80 CPU固有の全てのレジスタ（主レジスタ、代替レジスタ、インデックスレジスタ、特殊用途レジスタ）とフラグビットの状態を保持する。
@@ -105,25 +95,18 @@
     - `Z80CpuState`のインスタンスは、Z80 CPUの可変状態を保持する。
     - `CpuState`からの継承により、`pc`と`sp`も管理される。
 
-#### 4.2. Z80InstructionSet (概念的なモジュール、`instructions.py`に実装)
-- **責務 (Responsibility):** Z80命令セットのデコードロジックと実行ロジックを定義し提供する。これにより、Z80CPUは`AbstractCpu`の抽象メソッドを実装できる。
-- **提供するAPI (Public API):**
+#### 4.2. Z80InstructionSet (パッケージ、`instructions/`に実装)
+- **責務 (Responsibility):** Z80命令セットのデコードロジックと実行ロジックを定義し提供する。内部は機能別にモジュール分割されているが、`__init__.py`を通じて統一されたAPIを提供する。
+- **提供するAPI (Public API) - `instructions/__init__.py`:**
     - `decode_opcode(opcode: int, bus: Bus, pc: int) -> Operation`:
         - **責務:** 与えられたオペコードをZ80の命令としてデコードし、`Operation`オブジェクトを返す。マルチバイト命令の場合、`bus`を介してオペランドバイトをフェッチする。
-        - **引数:**
-            - `opcode` (int): デコード対象のオペコードバイト。
-            - `bus` (Bus): オペランドフェッチのためのバスインスタンス。
-            - `pc` (int): 現在のプログラムカウンタ（マルチバイトオペランドの読み込みに使用）。
-        - **戻り値:** `Operation` - デコードされた命令の詳細を含むオブジェクト。
     - `execute_instruction(operation: Operation, state: Z80CpuState, bus: Bus) -> None`:
         - **責務:** デコードされたZ80命令を実行し、`Z80CpuState`を更新し、必要に応じて`Bus`を介したメモリ/I/O操作を行う。
-        - **引数:**
-            - `operation` (Operation): 実行対象の命令詳細。
-            - `state` (Z80CpuState): 現在のZ80 CPUの状態。
-            - `bus` (Bus): メモリ/I/O操作のためのバスインスタンス。
-- **主要なデータ構造 (Key Data Structures):**
-    - `DECODE_MAP: Dict[int, Callable[[Bus, int], Operation]]`: オペコードとそれに対応するデコード関数をマッピングする辞書。
-    - `EXECUTE_MAP: Dict[int, Callable[[Z80CpuState, Bus, Operation], None]]`: オペコードとそれに対応する実行関数をマッピングする辞書。
+- **モジュール構造と役割:**
+    - `alu.py`: 算術論理演算を担当。フラグ更新ロジックもここに集約される。
+    - `load.py`: 8/16ビット転送、スタック操作、ブロック転送を担当。
+    - `control.py`: 分岐、I/O、割り込み制御、ビット操作を担当。
+    - `maps.py`: `DECODE_MAP` と `EXECUTE_MAP` を構築し、オペコードと実装関数の紐付けを管理する。
 - **重要なアルゴリズム (Key Algorithms):**
     - **命令デコード:** オペコードをキーとして`DECODE_MAP`から対応するデコード関数をルックアップし、実行する。マルチバイトオペランドは`bus`から直接読み込む。
     - **命令実行:** オペコードをキーとして`EXECUTE_MAP`から対応する実行関数をルックアップし、`Z80CpuState`と`Bus`を引数として実行する。
@@ -162,3 +145,16 @@
 - **重要なアルゴリズム (Key Algorithms):**
     - **命令サイクルオーケストレーション:** `step`メソッド内でフェッチ、デコード、PCインクリメント、実行、バスアクティビティキャプチャ、スナップショット生成の厳密な順序を管理する。
 - **状態とライフサイクル (State and Lifecycle):** `Z80Cpu`インスタンスは、Z80エミュレーションの実行時コンテキスト全体を管理し、`AbstractCpu`のライフサイクルに従う。
+
+#### 4.4. Z80Alu (ALUおよびフラグ計算、`alu.py`に実装)
+- **責務 (Responsibility):** Z80の算術・論理演算の結果に基づいて、フラグレジスタ（S, Z, H, P/V, N, C）を正確に計算・更新するロジックを集約する。
+- **提供するAPI (Public API):**
+    - `update_flags_add8(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 8ビット加算のフラグ更新。
+    - `update_flags_sub8(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 8ビット減算のフラグ更新。
+    - `update_flags_logic8(state: Z80CpuState, result: int) -> None`: 8ビット論理演算のフラグ更新。
+    - `update_flags_add16(state: Z80CpuState, val1: int, val2: int, result: int) -> None`: 16ビット加算のフラグ更新。
+
+#### 4.5. Z80Disassembler (逆アセンブラ、`disassembler.py`に実装)
+- **責務 (Responsibility):** 指定されたメモリ範囲のバイナリデータを解析し、Z80アセンブリ言語のニーモニック形式に変換する。
+- **提供するAPI (Public API):**
+    - `disassemble(bus: Bus, start_addr: int, length: int) -> List[str]`: メモリ上のデータを読み取り、ニーモニックのリストを返す。

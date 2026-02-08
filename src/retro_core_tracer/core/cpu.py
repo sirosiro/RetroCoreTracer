@@ -11,6 +11,7 @@ from typing import Optional, List, Dict
 from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.core.snapshot import Snapshot, Operation, Metadata
 from retro_core_tracer.core.state import CpuState
+from retro_core_tracer.common.types import SymbolMap
 
 # @intent:responsibility 抽象CPUの基本機能とインターフェースを定義します。
 class AbstractCpu(ABC):
@@ -24,13 +25,13 @@ class AbstractCpu(ABC):
         self._bus = bus
         self._state: CpuState = self._create_initial_state()
         self._cycle_count: int = 0
-        self._symbol_map: Dict[str, int] = {}
+        self._symbol_map: SymbolMap = {}
         self._reverse_symbol_map: Dict[int, str] = {}
         # @intent:rationale Stateオブジェクトの直接操作を避けるため、protectedな命名規則を採用。
         #                  外部からのアクセスは`get_state()`メソッドを介して行う。
 
     # @intent:responsibility シンボルマップを設定します。
-    def set_symbol_map(self, symbol_map: Dict[str, int]) -> None:
+    def set_symbol_map(self, symbol_map: SymbolMap) -> None:
         """
         シンボルマップ（名前とアドレスの対応表）を設定します。
         """

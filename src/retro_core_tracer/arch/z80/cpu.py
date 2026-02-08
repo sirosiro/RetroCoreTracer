@@ -31,8 +31,7 @@ class Z80Cpu(AbstractCpu):
     # @intent:responsibility 現在のPCからオペコードをフェッチします。PCのインクリメントはこの時点では行わず、
     #                  stepメソッド内で命令長に応じて更新します。
     def _fetch(self) -> int:
-        # フェッチする際にバスアクティビティを記録する
-        # TODO: bus_activityにフェッチ時のバスアクセスを記録する
+        # フェッチ時のバスアクセス（読み込み）はBusクラスによって自動的に記録されます。
         return self._bus.read(self._state.pc)
 
     # @intent:responsibility フェッチしたオペコードをデコードし、Operationオブジェクトを返します。

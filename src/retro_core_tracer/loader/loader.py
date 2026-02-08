@@ -9,9 +9,7 @@ import re
 from typing import Dict, Tuple, List
 
 from retro_core_tracer.transport.bus import Bus
-
-# @intent:data_structure シンボル名とアドレスをマッピングする辞書の型エイリアス。
-SymbolMap = Dict[str, int]
+from retro_core_tracer.common.types import SymbolMap
 
 # @intent:responsibility Intel HEX形式のファイルを解析し、メモリにロードします。
 class IntelHexLoader:

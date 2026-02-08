@@ -149,8 +149,7 @@ class TestAbstractCpu:
         # サイクルカウントの検証 (TestCpuでは実装していないのでまだ0かもしれないが、
         # 少なくともMetadataが存在することを確認)
         assert isinstance(snapshot.metadata.cycle_count, int)
-        assert snapshot.metadata.symbol_info == f"PC: {initial_pc:#06x} -> UNKNOWN"
-        
+        assert snapshot.metadata.symbol_info == "UNKNOWN"
         # バスアクティビティの検証
         # 1. Fetch (Read from initial_pc)
         # 2. Execute (Write to 0x0020)
