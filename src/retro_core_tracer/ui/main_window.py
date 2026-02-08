@@ -12,7 +12,7 @@ from retro_core_tracer.loader.loader import IntelHexLoader, AssemblyLoader
 from retro_core_tracer.config.loader import ConfigLoader
 from retro_core_tracer.config.builder import SystemBuilder
    
-from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QSettings
 from .register_view import RegisterView
 from .flag_view import FlagView
 from .hex_view import HexView
@@ -78,6 +78,43 @@ class MainWindow(QMainWindow):
         # Initial update of BreakpointView
         self.breakpoint_view.set_breakpoints(self.debugger.get_breakpoints())
 
+        # ウィンドウ状態の復元
+        self._restore_window_state()
+        
+        # アプリケーション終了時に確実に保存するためにシグナルを接続
+        QApplication.instance().aboutToQuit.connect(self._save_window_state)
+
+    # @intent:responsibility ウィンドウが閉じられる際のイベントハンドラ。状態を保存します。
+    def closeEvent(self, event: QCloseEvent):
+        self._save_window_state()
+        super().closeEvent(event)
+
+    # @intent:responsibility ウィンドウのジオメトリと状態を保存します。
+    def _save_window_state(self):
+        settings = QSettings("RetroCoreTracerTeam", "RetroCoreTracer")
+        geometry = self.saveGeometry()
+        state = self.saveState()
+        settings.setValue("geometry", geometry)
+        settings.setValue("windowState", state)
+
+    # @intent:responsibility ウィンドウのジオメトリと状態を復元します。
+    def _restore_window_state(self):
+        settings = QSettings("RetroCoreTracerTeam", "RetroCoreTracer")
+        geometry = settings.value("geometry")
+        state = settings.value("windowState")
+        
+        layout_restored = False
+        
+        if geometry:
+            self.restoreGeometry(geometry)
+        
+        if state:
+            if self.restoreState(state):
+                layout_restored = True
+
+        if not layout_restored:
+            self._setup_initial_layout()
+
     # @intent:responsibility メニューバーを作成し、ファイル操作（Intel HEXロード）アクションを追加します。
     def _create_menus(self):
         menu_bar = self.menuBar()
@@ -134,6 +171,7 @@ class MainWindow(QMainWindow):
     # @intent:responsibility 実行制御用のツールバーを作成します。
     def _create_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
+        toolbar.setObjectName("MainToolbar")
         self.addToolBar(toolbar)
 
         # アクションの作成
@@ -205,6 +243,7 @@ class MainWindow(QMainWindow):
         self.debugger.remove_breakpoint(condition)
         self.breakpoint_view.set_breakpoints(self.debugger.get_breakpoints()) # Update view
 
+    # @intent:responsibility アセンブリソースファイルを読み込み、シンボル情報を抽出し、バイナリをメモリにロードします。
     @Slot()
     def _load_assembly_file(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Assembly Source", "", "Assembly Files (*.asm *.s);;All Files (*)")
@@ -215,6 +254,7 @@ class MainWindow(QMainWindow):
                 
                 self.cpu.reset()
                 self.cpu.set_symbol_map(symbol_map) # シンボルマップをCPUに設定
+                self.code_view.set_symbol_map(symbol_map) # シンボルマップをCodeViewに設定
                 
                 self.code_view.reset_cache()
 
@@ -360,6 +400,9 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.RightDockWidgetArea, self.stack_dock)
         self.view_menu.addAction(self.stack_dock.toggleViewAction())
 
+    # @intent:responsibility 初回起動時のデフォルトレイアウトを設定します。
+    def _setup_initial_layout(self):
+        """初回起動時のデフォルトレイアウトを設定します。"""
         # --- Initial Layout Configuration ---
         
         # Left: Assembler on top, HEX View below it

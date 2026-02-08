@@ -8,6 +8,8 @@ from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.arch.z80.disassembler import disassemble
 from retro_core_tracer.ui.fonts import get_monospace_font
 
+from typing import Dict
+
 # @intent:responsibility 逆アセンブルされたコードを表形式で表示し、現在のPCをハイライトするUIウィジェットを提供します。
 class CodeView(QWidget):
     """
@@ -20,11 +22,12 @@ class CodeView(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         
         self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Address", "Bytes", "Mnemonic"])
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Address", "Bytes", "Label", "Mnemonic"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents) # Address
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents) # Bytes
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)          # Mnemonic
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents) # Label
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)          # Mnemonic
         
         # フォント設定
         font = get_monospace_font(10)
@@ -45,6 +48,18 @@ class CodeView(QWidget):
         
         # 現在表示している逆アセンブルデータ [(addr, hex, mnemonic), ...]
         self.disassembled_data = []
+        
+        # シンボルマップ (Label -> Address) の逆引き用 (Address -> Label)
+        self.reverse_symbol_map: Dict[int, str] = {}
+
+    # @intent:responsibility 表示に使用するシンボルマップを設定します。
+    def set_symbol_map(self, symbol_map: Dict[str, int]):
+        """
+        シンボルマップを設定します。
+        """
+        # アドレスから名前を引けるように逆変換
+        self.reverse_symbol_map = {addr: name for name, addr in symbol_map.items()}
+        self.reset_cache() # 表示更新のためにキャッシュをクリア
 
     # @intent:responsibility 指定されたPC周辺のメモリを逆アセンブルして表示を更新します。
     def update_code(self, bus: Bus, pc: int):
@@ -74,11 +89,21 @@ class CodeView(QWidget):
             for row, (addr, hex_dump, mnemonic) in enumerate(self.disassembled_data):
                 addr_item = QTableWidgetItem(f"{addr:04X}")
                 hex_item = QTableWidgetItem(hex_dump)
+                
+                # @intent:utility_function アドレスに対応するシンボル（ラベル）がある場合は表示用のカラムに設定します。
+                # ラベルがあれば取得、なければ空文字
+                label_text = self.reverse_symbol_map.get(addr, "")
+                if label_text:
+                    label_text += ":"
+                label_item = QTableWidgetItem(label_text)
+                label_item.setForeground(QColor("#00AAAA")) # Cyan color for labels
+                
                 mnemonic_item = QTableWidgetItem(mnemonic)
                 
                 self.table.setItem(row, 0, addr_item)
                 self.table.setItem(row, 1, hex_item)
-                self.table.setItem(row, 2, mnemonic_item)
+                self.table.setItem(row, 2, label_item)
+                self.table.setItem(row, 3, mnemonic_item)
                 
                 if addr == pc:
                     row_index = row
@@ -91,15 +116,18 @@ class CodeView(QWidget):
             # 行のアイテムを取得
             addr_item = self.table.item(row, 0)
             hex_item = self.table.item(row, 1)
-            mnemonic_item = self.table.item(row, 2)
+            label_item = self.table.item(row, 2)
+            mnemonic_item = self.table.item(row, 3)
             
             if row == row_index:
                 addr_item.setBackground(bg_color_highlight)
                 hex_item.setBackground(bg_color_highlight)
+                label_item.setBackground(bg_color_highlight)
                 mnemonic_item.setBackground(bg_color_highlight)
             else:
                 addr_item.setBackground(bg_color_normal)
                 hex_item.setBackground(bg_color_normal)
+                label_item.setBackground(bg_color_normal)
                 mnemonic_item.setBackground(bg_color_normal)
 
         # スクロール制御

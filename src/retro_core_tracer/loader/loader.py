@@ -141,6 +141,27 @@ class AssemblyLoader:
             elif mnemonic == "HALT":
                 binary_data.append((current_pc, 0x76))
                 current_pc += 1
+            # @intent:utility_function 各種制御・交換命令の簡易的なアセンブルを行います。
+            elif mnemonic == "EI":
+                binary_data.append((current_pc, 0xFB))
+                current_pc += 1
+            elif mnemonic == "DI":
+                binary_data.append((current_pc, 0xF3))
+                current_pc += 1
+            elif mnemonic == "EXX":
+                binary_data.append((current_pc, 0xD9))
+                current_pc += 1
+            elif mnemonic == "EX":
+                ops = operands.upper().replace(" ", "")
+                if ops == "DE,HL":
+                    binary_data.append((current_pc, 0xEB))
+                    current_pc += 1
+                elif ops == "AF,AF'":
+                    binary_data.append((current_pc, 0x08))
+                    current_pc += 1
+                elif ops == "(SP),HL":
+                    binary_data.append((current_pc, 0xE3))
+                    current_pc += 1
             elif mnemonic == "LD":
                 # 簡易的な LD A, n のサポート
                 if operands.upper().startswith("A,"):
