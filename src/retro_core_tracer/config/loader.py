@@ -4,7 +4,7 @@ from .models import SystemConfig, MemoryRegion, CpuInitialState
 
 class ConfigLoader:
     def load_from_file(self, path: str) -> SystemConfig:
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return self._parse_config(data)
 

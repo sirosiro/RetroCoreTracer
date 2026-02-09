@@ -101,7 +101,7 @@ class AssemblyLoader:
         current_pc = 0x0000
         binary_data: List[Tuple[int, int]] = [] # (address, byte)
 
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding="utf-8") as f:
             lines = f.readlines()
 
         # パス1: シンボルの収集とアドレスの確定
