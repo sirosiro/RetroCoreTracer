@@ -1,0 +1,19 @@
+architecture: "MC6800"
+memory_map:
+  - start: 0x0000
+    end: 0x7FFF
+    type: "RAM"
+    label: "Main RAM"
+  - start: 0x8000
+    end: 0xFFFF
+    type: "ROM"
+    label: "System ROM"
+
+initial_state:
+  pc: 0x0000
+  sp: 0x7FFF
+  registers:
+    a: 0x00
+    b: 0x00
+    x: 0x0000
+    cc: 0xC0

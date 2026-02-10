@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
-from PySide6.QtCore import Qt
-from retro_core_tracer.config.models import SystemConfig, MemoryRegion
+from typing import Optional
+from retro_core_tracer.config.models import SystemConfig
+from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.ui.fonts import get_monospace_font
 
 class MemoryMapView(QWidget):
@@ -26,15 +27,29 @@ class MemoryMapView(QWidget):
         self.table.setStyleSheet("background-color: #101010; color: #BBBBBB; gridline-color: #303030;")
         
         self.layout.addWidget(self.table)
+        self._config: Optional[SystemConfig] = None
+        self._bus: Optional[Bus] = None
 
-    def update_map(self, config: SystemConfig):
+    def set_config(self, config: SystemConfig, bus: Bus):
         """
-        SystemConfigに基づいてメモリマップ表示を更新します。
+        SystemConfigとBusを設定し、表示を更新します。
         """
-        self.table.setRowCount(len(config.memory_map))
+        self._config = config
+        self._bus = bus
+        self.update_view()
+
+    def update_view(self):
+        """
+        現在の設定に基づいてメモリマップ表示を更新します。
+        """
+        if not self._config:
+            self.table.setRowCount(0)
+            return
+
+        self.table.setRowCount(len(self._config.memory_map))
         
-        # Sort by start address
-        sorted_map = sorted(config.memory_map, key=lambda x: x.start)
+        # アドレス順にソートして表示
+        sorted_map = sorted(self._config.memory_map, key=lambda x: x.start)
         
         for row, region in enumerate(sorted_map):
             range_str = f"{region.start:04X} - {region.end:04X}"
@@ -43,3 +58,9 @@ class MemoryMapView(QWidget):
             self.table.setItem(row, 1, QTableWidgetItem(region.type))
             self.table.setItem(row, 2, QTableWidgetItem(region.permissions))
             self.table.setItem(row, 3, QTableWidgetItem(region.label))
+
+    def update_map(self, config: SystemConfig):
+        """
+        互換性のために残された旧メソッド。
+        """
+        self.set_config(config, self._bus)

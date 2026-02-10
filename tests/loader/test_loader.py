@@ -24,7 +24,6 @@ class TestIntelHexLoader:
         loader = IntelHexLoader()
         return loader, bus, ram, tmp_path
 
-    # @intent:test_case_simple_hex 単純なデータレコードを含むHEXファイルを正しくロードすることを検証します。
     def test_load_simple_hex_data(self, setup_loader):
         loader, bus, ram, tmp_path = setup_loader
         hex_content = """
@@ -42,7 +41,6 @@ class TestIntelHexLoader:
         assert ram.read(0x0002) == 0xAB
         assert ram.read(0x0003) == 0xCD
 
-    # @intent:test_case_extended_linear_address_hex 拡張リニアアドレスレコードを含むHEXファイルを正しくロードすることを検証します。
     def test_load_extended_linear_address_hex(self, setup_loader):
         loader, bus, ram, tmp_path = setup_loader
         hex_content = """
@@ -58,7 +56,6 @@ class TestIntelHexLoader:
         assert ram.read(0x11000) == 0x12
         assert ram.read(0x11001) == 0x34
 
-    # @intent:test_case_multiple_records 複数のデータレコードとEOFレコードを含むHEXファイルを正しくロードすることを検証します。
     def test_load_multiple_records(self, setup_loader):
         loader, bus, ram, tmp_path = setup_loader
         hex_content = """
@@ -77,7 +74,6 @@ class TestIntelHexLoader:
         assert ram.read(0x0003) == 0xDD
         assert ram.read(0x0004) == 0xEE
 
-    # @intent:test_case_invalid_checksum チェックサムが不正なHEXファイルの場合にValueErrorを発生させることを検証します。
     def test_load_invalid_checksum(self, setup_loader):
         loader, bus, ram, tmp_path = setup_loader
         hex_content = """
@@ -87,10 +83,13 @@ class TestIntelHexLoader:
         hex_file = tmp_path / "invalid_checksum.hex"
         hex_file.write_text(hex_content)
 
+        # メッセージが完全一致するか検証（正規表現ではないので注意）
+        # loader.pyの実装: raise ValueError(f"Checksum mismatch on line {line_num}: Calculated {calculated_checksum:02X}, Expected {checksum_field:02X}")
+        # Test expectation: match="Checksum mismatch on line 2: Calculated B8, Expected B9"
+        # Note: loader.py implementation matches this exactly now.
         with pytest.raises(ValueError, match="Checksum mismatch on line 2: Calculated B8, Expected B9"):
             loader.load_intel_hex(str(hex_file), bus)
 
-    # @intent:test_case_unknown_record_type 未知のレコードタイプを含むHEXファイルの場合にValueErrorを発生させることを検証します。
     def test_load_unknown_record_type(self, setup_loader):
         loader, bus, ram, tmp_path = setup_loader
         hex_content = """
@@ -103,7 +102,6 @@ class TestIntelHexLoader:
         with pytest.raises(ValueError, match="Unknown Intel HEX record type 06 on line 2"):
             loader.load_intel_hex(str(hex_file), bus)
 
-    # @intent:test_case_empty_file 空のHEXファイルをロードしてもエラーにならないことを検証します。
     def test_load_empty_hex_file(self, setup_loader):
         loader, bus, ram, tmp_path = setup_loader
         hex_file = tmp_path / "empty.hex"
@@ -117,7 +115,6 @@ class TestAssemblyLoader:
     """
     AssemblyLoaderの単体テスト。
     """
-    # @intent:test_case_basic 簡易的なアセンブリコードを正しくロードし、シンボルマップを生成することを検証します。
     def test_load_assembly_basic(self, tmp_path):
         bus = Bus()
         ram = RAM(0x1000)
@@ -138,10 +135,8 @@ class TestAssemblyLoader:
         loader = AssemblyLoader()
         symbol_map = loader.load_assembly(str(asm_file), bus)
 
-        # シンボルマップの検証
         assert symbol_map == {"start": 0x100, "loop": 0x103}
         
-        # メモリ配置の検証
         assert ram.read(0x100) == 0x00 # NOP
         assert ram.read(0x101) == 0x12 # DB
         assert ram.read(0x102) == 0x34 # DB

@@ -2,6 +2,7 @@ from typing import Tuple
 from retro_core_tracer.transport.bus import Bus, RAM
 from retro_core_tracer.core.cpu import AbstractCpu
 from retro_core_tracer.arch.z80.cpu import Z80Cpu
+from retro_core_tracer.arch.mc6800.cpu import Mc6800Cpu
 from .models import SystemConfig
 
 class SystemBuilder:
@@ -21,6 +22,8 @@ class SystemBuilder:
         
         if config.architecture == "Z80":
             cpu = Z80Cpu(bus)
+        elif config.architecture == "MC6800":
+            cpu = Mc6800Cpu(bus)
         else:
             raise ValueError(f"Unsupported architecture: {config.architecture}")
             

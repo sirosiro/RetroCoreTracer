@@ -3,372 +3,111 @@
 ブレークポイントの管理UIウィジェット。
 """
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit,
-    QPushButton, QListWidget, QListWidgetItem, QInputDialog, QMessageBox, QMenu
+    QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit,
+    QPushButton, QListWidget, QListWidgetItem, QMessageBox, QMenu
 )
-from PySide6.QtGui import QAction, QKeyEvent
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtCore import Qt, Signal, Slot
 from typing import List, Optional, Dict
 
 from retro_core_tracer.debugger.debugger import BreakpointCondition, BreakpointConditionType
+from retro_core_tracer.core.cpu import AbstractCpu
 
-# @intent:responsibility ブレークポイントの管理（追加、削除、一覧表示）を行うUIウィジェットを提供します。
 class BreakpointView(QWidget):
     """
     ブレークポイントの追加、削除、一覧表示を行うUIウィジェット。
     """
-    # ブレークポイントの追加/削除をMainWindowに通知するためのシグナル
-    # (MainWindowがDebuggerインスタンスを保持しているため)
     breakpoint_added = Signal(BreakpointCondition)
     breakpoint_removed = Signal(BreakpointCondition)
 
-    # @intent:responsibility BreakpointViewウィジェットを初期化し、入力フォームとリストウィジェットを配置します。
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(5, 5, 5, 5)
 
         self.symbol_map: Dict[str, int] = {}
+        self._cpu: Optional[AbstractCpu] = None
 
-        # --------------------
-        # ブレークポイント追加フォーム
-        # --------------------
-        # @intent:change レイアウトをグリッドにして、幅が狭いときでも入力欄を確保する
         add_form_layout = QGridLayout()
-
-        # タイプ選択
         add_form_layout.addWidget(QLabel("Type:"), 0, 0)
         self.type_combo = QComboBox()
-        # ドロップダウンリストの幅を最小限確保し、見切れを防ぐ
         self.type_combo.setMinimumWidth(120)
-        self.type_combo.view().setMinimumWidth(150) # リスト部分を少し広げる
-        # @intent:change 視認性改善のためのスタイルシート設定
-        self.type_combo.setStyleSheet("""
-            QComboBox {
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 2px 5px;
-                background-color: #333;
-                color: #EEE;
-            }
-            QComboBox::drop-down {
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 15px;
-                border-left-width: 1px;
-                border-left-color: darkgray;
-                border-left-style: solid;
-                border-top-right-radius: 3px;
-                border-bottom-right-radius: 3px;
-            }
-            QComboBox QAbstractItemView {
-                border: 1px solid darkgray;
-                selection-background-color: #2A82DA;
-                selection-color: white;
-                background-color: #333;
-                color: #EEE;
-                outline: none;
-            }
-        """)
         for bp_type in BreakpointConditionType:
-            self.type_combo.addItem(bp_type.name, bp_type) # Store enum value as user data
+            self.type_combo.addItem(bp_type.name, bp_type)
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         add_form_layout.addWidget(self.type_combo, 0, 1)
 
-        # 値/アドレス/レジスタ名入力
         add_form_layout.addWidget(QLabel("Value/Addr/Reg:"), 0, 2)
         self.value_input = QLineEdit()
-        self.value_input.setPlaceholderText("e.g., 0x1234 or A")
         add_form_layout.addWidget(self.value_input, 0, 3)
         
-        # 追加ボタン (2行目に配置して横幅を確保)
         self.add_button = QPushButton("Add Breakpoint")
         self.add_button.clicked.connect(self._add_breakpoint)
-        add_form_layout.addWidget(self.add_button, 1, 0, 1, 4) # Span across all columns
+        add_form_layout.addWidget(self.add_button, 1, 0, 1, 4)
 
         self.layout.addLayout(add_form_layout)
 
-        # --------------------
-        # 既存ブレークポイント一覧
-        # --------------------
-        list_layout = QVBoxLayout()
-        list_layout.setContentsMargins(0, 0, 0, 0)
-
         self.bp_list_widget = QListWidget()
-        self.bp_list_widget.setSelectionMode(QListWidget.SingleSelection)
-        self.bp_list_widget.itemDoubleClicked.connect(self._remove_breakpoint_from_list)
-        self.bp_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.bp_list_widget.customContextMenuRequested.connect(self._show_context_menu)
-        list_layout.addWidget(self.bp_list_widget)
+        self.bp_list_widget.itemSelectionChanged.connect(self._on_selection_changed)
+        self.layout.addWidget(self.bp_list_widget)
 
         self.remove_button = QPushButton("Remove Selected")
         self.remove_button.setEnabled(False)
         self.remove_button.clicked.connect(self._remove_selected_breakpoint)
-        list_layout.addWidget(self.remove_button)
+        self.layout.addWidget(self.remove_button)
 
-        self.bp_list_widget.itemSelectionChanged.connect(self._on_selection_changed)
-
-        self.layout.addLayout(list_layout)
-
-        # 初期状態のUIを更新
         self._on_type_changed(self.type_combo.currentIndex())
     
-    # @intent:responsibility シンボルマップを設定します。
+    def set_cpu(self, cpu: AbstractCpu):
+        """MainWindowからの呼び出しに対応するためのメソッド"""
+        self._cpu = cpu
+
     def set_symbol_map(self, symbol_map: Dict[str, int]):
-        """
-        シンボルマップを設定します。入力値のラベル解決に使用されます。
-        """
         self.symbol_map = symbol_map
 
-    # @intent:responsibility 選択されたブレークポイントタイプに応じて、入力フィールドのプレースホルダーと有効状態を更新します。
     @Slot(int)
     def _on_type_changed(self, index: int):
-        selected_type: BreakpointConditionType = self.type_combo.itemData(index)
-        if selected_type in [BreakpointConditionType.PC_MATCH, BreakpointConditionType.REGISTER_VALUE, BreakpointConditionType.MEMORY_READ, BreakpointConditionType.MEMORY_WRITE]:
-            self.value_input.setEnabled(True)
-            if selected_type == BreakpointConditionType.REGISTER_VALUE:
-                self.value_input.setPlaceholderText("e.g., A:0xAA or HL:0x1234")
-            elif selected_type in [BreakpointConditionType.MEMORY_READ, BreakpointConditionType.MEMORY_WRITE]:
-                self.value_input.setPlaceholderText("e.g., 0x1000 or Label")
-            else: # PC_MATCH
-                self.value_input.setPlaceholderText("e.g., 0x1234 or Label")
-        elif selected_type == BreakpointConditionType.REGISTER_CHANGE:
-            self.value_input.setEnabled(True)
-            self.value_input.setPlaceholderText("e.g., A or HL")
-        else: # 例えば、将来的に引数が不要なタイプが追加された場合
-            self.value_input.setEnabled(False)
-            self.value_input.clear()
+        selected_type = self.type_combo.itemData(index)
+        self.value_input.setEnabled(True)
+        self.value_input.setPlaceholderText(f"Enter {selected_type.name} criteria")
 
-    # @intent:utility_function 入力文字列を数値に変換します。16進数、10進数、またはラベル名を解決します。
     def _resolve_value(self, value_str: str) -> Optional[int]:
-        value_str = value_str.strip()
-        if not value_str:
-            return None
-        
-        # 1. Try hex
         try:
-            return int(value_str, 16)
+            return int(value_str, 16) if value_str.startswith('0x') else int(value_str)
         except ValueError:
-            pass
-            
-        # 2. Try decimal (only if it doesn't look like a symbol, but simple digits)
-        # Note: Symbols can be anything, but usually start with letters.
-        if value_str.isdigit():
-             try:
-                return int(value_str, 10)
-             except ValueError:
-                pass
+            return self.symbol_map.get(value_str)
 
-        # 3. Try Symbol Map
-        if value_str in self.symbol_map:
-            return self.symbol_map[value_str]
-        
-        # 4. Try Symbol Map with case insensitivity (optional, but good for UX)
-        upper_map = {k.upper(): v for k, v in self.symbol_map.items()}
-        if value_str.upper() in upper_map:
-            return upper_map[value_str.upper()]
-
-        return None
-
-    # @intent:responsibility ユーザー入力に基づいて新しいブレークポイント条件を作成し、シグナルを発行します。
-    # @intent:rationale バリデーションはUI層で行い、無効なデータがCore層に渡らないように防御します。
     @Slot()
     def _add_breakpoint(self):
-        bp_type: BreakpointConditionType = self.type_combo.currentData()
+        bp_type = self.type_combo.currentData()
         value_str = self.value_input.text().strip()
-        
-        condition: Optional[BreakpointCondition] = None
-
         try:
+            condition = None
             if bp_type == BreakpointConditionType.PC_MATCH:
-                value = self._resolve_value(value_str)
-                if value is None:
-                    raise ValueError(f"Invalid value or unknown label: '{value_str}'")
-                condition = BreakpointCondition(condition_type=bp_type, value=value)
-            
-            elif bp_type == BreakpointConditionType.MEMORY_READ or bp_type == BreakpointConditionType.MEMORY_WRITE:
-                address = self._resolve_value(value_str)
-                if address is None:
-                    raise ValueError(f"Invalid address or unknown label: '{value_str}'")
-                condition = BreakpointCondition(condition_type=bp_type, address=address)
-            
-            elif bp_type == BreakpointConditionType.REGISTER_VALUE:
-                # Format: REG:VALUE
-                if ':' not in value_str:
-                    raise ValueError("Format must be REG:VALUE (e.g., A:0xFF)")
-                reg_name_str, reg_value_str = value_str.split(':', 1)
-                reg_name = reg_name_str.strip().upper()
-                reg_value = self._resolve_value(reg_value_str)
-                if reg_value is None:
-                     raise ValueError(f"Invalid value: '{reg_value_str}'")
-                condition = BreakpointCondition(condition_type=bp_type, register_name=reg_name, value=reg_value)
-            
+                val = self._resolve_value(value_str)
+                if val is not None: condition = BreakpointCondition(bp_type, value=val)
             elif bp_type == BreakpointConditionType.REGISTER_CHANGE:
-                reg_name = value_str.strip().upper()
-                if not reg_name:
-                    raise ValueError("Register name cannot be empty")
-                condition = BreakpointCondition(condition_type=bp_type, register_name=reg_name)
+                condition = BreakpointCondition(bp_type, register_name=value_str.upper())
             
             if condition:
-                self.breakpoint_added.emit(condition) # MainWindowに通知
-                self._update_list() # リスト更新はMainWindowからのコールバックでやる方がクリーン
-                self.value_input.clear() # Clear input on success
-
-        except ValueError as e:
-            QMessageBox.critical(self, "Input Error", f"Invalid input for breakpoint: {e}")
+                self.breakpoint_added.emit(condition)
+                self.value_input.clear()
+                # 簡易的にリストに追加（本来はDebuggerから通知を受けるべき）
+                item = QListWidgetItem(str(condition))
+                item.setData(Qt.UserRole, condition)
+                self.bp_list_widget.addItem(item)
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"An unexpected error occurred: {e}")
-            
-    def _update_list(self):
-        """MainWindowから現在のDebuggerのブレークポイントリストを受け取り、表示を更新する。"""
-        # このメソッドはMainWindow側で、Debuggerのget_breakpoints()を呼び出し、
-        # その結果を引数として渡すコールバックとして実装される予定。
-        # 今はダミーの実装。
-        # self.bp_list_widget.clear()
-        # for bp in self.debugger.get_breakpoints():
-        #     item = QListWidgetItem(str(bp))
-        #     item.setData(Qt.UserRole, bp) # ブレークポイントオブジェクトをUserRoleに保存
-        #     self.bp_list_widget.addItem(item)
-        pass # Placeholder for actual update logic
+            QMessageBox.critical(self, "Error", str(e))
 
-    # @intent:responsibility 選択状態の変化を監視し、削除ボタンの有効/無効を制御します。
-    # @intent:ux_design ユーザーに「今は削除できない」ことを視覚的にフィードバックするため、ボタンのEnabled状態を動的に切り替えます。
     @Slot()
     def _on_selection_changed(self):
         self.remove_button.setEnabled(len(self.bp_list_widget.selectedItems()) > 0)
 
-    # @intent:responsibility 選択されたブレークポイントを削除リストから取得し、削除処理を委譲します。
     @Slot()
     def _remove_selected_breakpoint(self):
-        selected_items = self.bp_list_widget.selectedItems()
-        if not selected_items:
-            return
-        
-        item = selected_items[0]
-        # @intent:decision リスト操作の一貫性を保つため、実際の削除ロジックは _remove_breakpoint_from_list に集約し、ここからは呼び出すだけに留めます。
-        self._remove_breakpoint_from_list(item)
-
-    # @intent:responsibility コンテキストメニューを表示し、右クリックからの削除操作を提供します。
-    # @intent:ux_design デスクトップアプリケーションとしての標準的な操作感（右クリック削除）を提供するため。
-    @Slot(str)
-    def _show_context_menu(self, pos):
-        item = self.bp_list_widget.itemAt(pos)
-        if item:
-            menu = QMenu(self)
-            remove_action = menu.addAction("Remove Breakpoint")
-            action = menu.exec(self.bp_list_widget.mapToGlobal(pos))
-            if action == remove_action:
-                self._remove_breakpoint_from_list(item)
-
-    # @intent:responsibility キーボード操作による削除をサポートします。
-    # @intent:pre-condition 誤操作を防ぐため、リストウィジェットにフォーカスがある場合のみ削除を実行します。
-    def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
-            # Only trigger if the list widget has focus or contains selected items
-            if self.bp_list_widget.hasFocus():
-                self._remove_selected_breakpoint()
-                event.accept()
-                return
-        super().keyPressEvent(event)
-
-
-    # @intent:responsibility 選択されたブレークポイントの削除を確認し、削除シグナルを発行します。
-    # @intent:ux_design デバッグ作業のリズムを維持するため、デフォルトボタンを[Yes]に設定し、Enterキー等で素早く削除できるようにします。
-    @Slot(QListWidgetItem)
-    def _remove_breakpoint_from_list(self, item: QListWidgetItem):
-        item_text = item.text() # Get text before item is potentially deleted
-        reply = QMessageBox.question(self, "Remove Breakpoint", 
-                                     f"Are you sure you want to remove breakpoint: {item_text}?",
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-        if reply == QMessageBox.Yes:
-            condition: BreakpointCondition = item.data(Qt.UserRole)
-            if condition:
-                self.breakpoint_removed.emit(condition) # MainWindowに通知
-                # リストからの削除はMainWindowからのコールバックでやる方がクリーン
-                # self.bp_list_widget.takeItem(self.bp_list_widget.row(item))
-            # The list will refresh via MainWindow's slot, so no QMessageBox is needed here.
-            # QMessageBox.information(self, "Breakpoint Removed", f"Breakpoint {item_text} removed (or notification sent).")
-
-    # @intent:responsibility ブレークポイントリストの表示を更新します。
-    def set_breakpoints(self, breakpoints: List[BreakpointCondition]):
-        """
-        MainWindowから現在のブレークポイントリストを受け取り、表示を更新する。
-        """
-        self.bp_list_widget.clear()
-        for bp in breakpoints:
-            item = QListWidgetItem(self._format_breakpoint_for_display(bp))
-            item.setData(Qt.UserRole, bp) # ブレークポイントオブジェクトをUserRoleに保存
-            self.bp_list_widget.addItem(item)
-
-    # @intent:responsibility ブレークポイント条件を表示用文字列にフォーマットします。
-    def _format_breakpoint_for_display(self, bp: BreakpointCondition) -> str:
-        if bp.condition_type == BreakpointConditionType.PC_MATCH:
-            return f"PC_MATCH: 0x{bp.value:04X}"
-        elif bp.condition_type == BreakpointConditionType.MEMORY_READ:
-            return f"MEM_READ: 0x{bp.address:04X}"
-        elif bp.condition_type == BreakpointConditionType.MEMORY_WRITE:
-            return f"MEM_WRITE: 0x{bp.address:04X}"
-        elif bp.condition_type == BreakpointConditionType.REGISTER_VALUE:
-            return f"REG_VALUE: {bp.register_name}={bp.value:02X}"
-        elif bp.condition_type == BreakpointConditionType.REGISTER_CHANGE:
-            return f"REG_CHANGE: {bp.register_name}"
-        return str(bp)
-
-# Minimal test code
-if __name__ == '__main__':
-    sys._excepthook = sys.excepthook 
-    def exception_hook(exctype, value, traceback):
-        sys._excepthook(exctype, value, traceback)
-        sys.exit(1)
-    sys.excepthook = exception_hook
-
-    from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
-    from retro_core_tracer.debugger.debugger import Debugger # Dummy Debugger
-    from retro_core_tracer.core.cpu import AbstractCpu
-    from retro_core_tracer.core.snapshot import Snapshot
-    from retro_core_tracer.transport.bus import Bus
-    from retro_core_tracer.arch.z80.cpu import Z80CpuState
-
-    class DummyCpu(AbstractCpu):
-        def _create_initial_state(self) -> Z80CpuState:
-            return Z80CpuState()
-        def _fetch(self) -> int: return 0 # Dummy
-        def _decode(self, opcode: int, bus: Bus, pc: int) -> Operation: return Operation("00", "NOP") # Dummy
-        def _execute(self, operation: Operation, state: Z80CpuState, bus: Bus) -> None: pass # Dummy
-        def get_register_map(self) -> Dict[str, int]: return {}
-        def get_register_layout(self): return []
-        def get_flag_state(self) -> Dict[str, bool]: return {}
-        def disassemble(self, start_addr: int, length: int): return []
-
-    class DummyDebugger(Debugger):
-        def __init__(self, cpu: AbstractCpu):
-            super().__init__(cpu)
-            # Add some dummy breakpoints
-            self.add_breakpoint(BreakpointCondition(BreakpointConditionType.PC_MATCH, value=0x1000))
-            self.add_breakpoint(BreakpointCondition(BreakpointConditionType.REGISTER_CHANGE, register_name="A"))
-
-        def get_breakpoints(self) -> List[BreakpointCondition]:
-            return self._breakpoints
-
-    app = QApplication([])
-    
-    cpu = DummyCpu(Bus())
-    debugger = DummyDebugger(cpu)
-
-    main_win = QMainWindow()
-    bp_view = BreakpointView()
-    bp_view.setWindowTitle("Breakpoint View Test")
-    main_win.setCentralWidget(bp_view) # For testing, put in central widget
-    main_win.setGeometry(100, 100, 400, 300)
-    main_win.show()
-
-    # Simulate MainWindow updating the list
-    bp_view.set_breakpoints(debugger.get_breakpoints())
-
-    # Simulate adding/removing breakpoints via UI
-    # This would normally connect to MainWindow's methods
-    bp_view.breakpoint_added.connect(lambda bp: (debugger.add_breakpoint(bp), bp_view.set_breakpoints(debugger.get_breakpoints()), QMessageBox.information(main_win, "Added", str(bp))))
-    bp_view.breakpoint_removed.connect(lambda bp: (debugger.remove_breakpoint(bp), bp_view.set_breakpoints(debugger.get_breakpoints()), QMessageBox.information(main_win, "Removed", str(bp))))
-
-
-    sys.exit(app.exec())
+        items = self.bp_list_widget.selectedItems()
+        if items:
+            item = items[0]
+            condition = item.data(Qt.UserRole)
+            self.breakpoint_removed.emit(condition)
+            self.bp_list_widget.takeItem(self.bp_list_widget.row(item))

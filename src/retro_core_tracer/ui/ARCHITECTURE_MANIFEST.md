@@ -33,20 +33,25 @@
 - **原則: UIは特定のCPUアーキテクチャの実装詳細を知ってはならない。**
   - **理由:** マルチアーキテクチャ対応を容易にし、CPUの追加時にUIコードの修正を不要にするため。UIは `AbstractCpu` が提供するメタデータ（レイアウト、レジスタマップ、フラグ状態）のみに基づいて描画を行う。
 
-- **原則: UIは、SnapshotオブジェクトまたはCPUのメタデータ取得APIのみを情報源とする。**
-  - **理由:** コアロジックとの疎結合を維持し、将来的な "Time Travel Debugging" への対応を容易にするため。
+- **原則: UIコンポーネントは、統一された初期化・更新インターフェースを持つ。**
+  - **理由:** `MainWindow` が各ビューを一貫した方法で管理（Dependency Injectionおよび描画更新）できるようにし、結合度を下げるため。具体的には `set_context` (または `set_cpu`/`set_bus`) と `update_view` パターンを採用する。
 
 ### 2. 主要なアーキテクチャ決定の記録 (Key Architectural Decisions)
 
 - **Date:** 2026-02-08
 - **Core Principle:** UIは特定のCPUアーキテクチャの実装詳細を知ってはならない。
 - **Decision:** データ駆動型UIへのリファクタリング。
-- **Rationale:** MC6800対応に際し、Z80固有の記述がUIに散在していた課題を解決するため。CPUから提供される `RegisterLayoutInfo` に基づいてUIを動的に構築する仕組みを導入した。
+- **Rationale:** MC6800対応に際し、Z80固有の記述がUIに散在していた課題を解決するため。
 
-- **Date:** 2026-02-08
-- **Core Principle:** デバッグ作業のリズムを優先するUX。
-- **Decision:** ブレークポイント削除時のデフォルトボタンを [Yes] に設定。
-- **Rationale:** 開発者が頻繁に行う「ブレークポイントの試行錯誤」において、削除確認が過度なノイズにならないよう、キーボード操作（Enter）で即座に承認できる構成とした。
+- **Date:** 2026-02-10
+- **Core Principle:** UIコンポーネントは、統一された初期化・更新インターフェースを持つ。
+- **Decision:** 全てのビュー（CodeView, HexView, StackView等）に対し、コンストラクタによる依存性注入ではなく、`set_cpu` / `set_bus` メソッドによる遅延初期化と、引数なしの `update_view` メソッドによる再描画を強制する。
+- **Rationale:** 設定ファイル読み込み時に動的にシステム構成が変わるため、ビューのインスタンス再生成を行わずに依存オブジェクト（CPU/Bus）を差し替え可能にする必要がある。
+
+- **Date:** 2026-02-10
+- **Core Principle:** ユーザビリティの向上。
+- **Decision:** 実行制御に「Reset」機能を追加。
+- **Rationale:** 開発サイクル（コード修正 -> ロード -> 実行 -> リセット -> 再実行）をスムーズにするため。
 
 ### 3. モジュール構成 (Module Structure)
 
@@ -55,34 +60,40 @@
 - **`register_view.py`**: 汎用的なレジスタ表示（動的生成）。
 - **`flag_view.py`**: 汎用的なフラグ表示（動的生成）。
 - **`code_view.py`**: 汎用的な逆アセンブル表示。
+- **`hex_view.py`**: メモリダンプ表示。
+- **`stack_view.py`**: スタック領域表示。
 - **`breakpoint_view.py`**: ブレークポイント管理（多角的UI）。
 
 ### 4. コンポーネント設計仕様 (Component Design Specifications)
 
+#### 4.1. MainWindow
+- **責務:**
+    - アプリケーション全体のライフサイクル管理。
+    - システム構成（Config, CPU, Bus）のロードと構築。
+    - 各子ビューへの依存性の注入 (`set_cpu`, `set_bus`)。
+    - 実行ループ（Run/Step/Reset）の制御。
+
 #### 4.4. RegisterView (レジスタビュー)
 - **責務:** CPUアーキテクチャに依存しない汎用的なレジスタ値を表示する。
 - **提供するAPI:**
-    - `set_cpu(cpu: AbstractCpu)`: `get_register_layout()` に基づき QGroupBox と QFormLayout を動的に構築する。
-    - `update_registers()`: `get_register_map()` から値を取得し、対応するラベルを更新する。
+    - `set_cpu(cpu: AbstractCpu)`: レイアウトを構築する。
+    - `update_registers()`: 値を更新する。
 
 #### 4.5. FlagView (フラグビュー)
 - **責務:** CPUアーキテクチャに依存しない汎用的なフラグ状態を表示する。
 - **提供するAPI:**
-    - `set_cpu(cpu: AbstractCpu)`: `get_flag_state()` のキーに基づいてラベルを動的に生成する。
-    - `update_flags()`: `get_flag_state()` の値（bool）に基づいて "0/1" 表示を更新する。
+    - `set_cpu(cpu: AbstractCpu)`: ラベルを構築する。
+    - `update_flags()`: 状態を更新する。
 
-#### 4.7. BreakpointView (ブレークポイント管理ビュー)
-- **責務:** ブレークポイントの多角的な管理（追加・削除・一覧）を提供する。
-- **提供するUI機能:**
-    - **動的追加:** 数値、16進数、シンボル名による指定をサポート。
-    - **多角的な削除操作:** 削除ボタン、コンテキストメニュー（右クリック）、キーボード（Delete/Backspace）に対応。
-    - **削除確認:** デフォルトを [Yes] に設定したモーダルダイアログ。
-- **信号 (Signals):**
-    - `breakpoint_added(BreakpointCondition)`
-    - `breakpoint_removed(BreakpointCondition)`
+#### 4.6. HexView / StackView
+- **責務:** バス上のメモリデータを可視化する。
+- **提供するAPI:**
+    - `set_bus(bus: Bus)` / `set_cpu(cpu: AbstractCpu, bus: Bus)`
+    - `update_view()`: 現在の状態に基づいて再描画する。
 
 #### 4.8. CodeView (コードビュー)
 - **責務:** メモリ上の機械語を逆アセンブルして表示し、現在のPCをハイライトする。
-- **主要なアルゴリズム:**
-    - **抽象逆アセンブル:** 内部で Z80 モジュールを呼ばず、`bus.cpu.disassemble()` を経由してアーキテクチャ固有の逆アセンブラを利用する。
-    - **スマートスクロール:** PCが変更された際、実行予定の「先（下）」が見えるように5行分のスクロールマージンを維持する。
+- **API:**
+    - `set_cpu(cpu: AbstractCpu)`
+    - `set_symbol_map(map: SymbolMap)`
+    - `update_code(pc: int)`: 指定PCを中心に表示を更新。

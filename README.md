@@ -4,22 +4,28 @@
 
 Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ、バス、フラグ、スタック）をリアルタイムかつ詳細に可視化するための教育的ツールです。単に命令を実行するだけでなく、「ビットの羅列がどのように意味を持ち、回路を駆動するか」というプロセスを透明化することを目的としています。
 
-![Retro Core Tracer Main Window](./docs/assets/Main-window-snapshot.png)
+### Z80 Mode
+![Retro Core Tracer Z80 Mode](./docs/assets/Z80-window-snapshot.png)
+
+### MC6800 Mode
+![Retro Core Tracer MC6800 Mode](./docs/assets/mc6800-window-snapshot.png)
 
 ## ✨ 特徴
 
-*   **マルチアーキテクチャ対応基盤:** UI層が特定のCPU実装から完全に分離されており、メタデータ駆動（Data-Driven）で動的にレジスタやフラグを表示します。現在は **Z80** に対応しており、今後 **MC6800** 等の追加が容易な設計です。
+*   **マルチアーキテクチャ対応基盤:** UI層が特定のCPU実装から完全に分離されており、メタデータ駆動（Data-Driven）で動的にレジスタやフラグを表示します。現在は **Z80** および **MC6800** に対応しています。
 *   **教育的透明性 (Transparency):** レジスタの変化、フラグの更新、スタックの積み上げなど、CPUの内部状態を隠さず全て表示します。
 *   **Pure Bus Logging (純粋なバス監視):** UI描画のためのメモリ読み出し（Peek）と、CPUによる実際の実行アクセス（Read/Write）を厳密に区別。**「画面上でバスが光った＝確実にCPUがアクセスした」** という信頼性を提供します。
 *   **Visualized Block Transfer:** `LDIR` などのブロック転送命令において、結果を一括更新するのではなく、1バイト転送ごとにステップ実行が可能。データがメモリ上を流いていく様子をアニメーションのように観察できます。
 *   **Snapshotベースの可視化:** 1命令ごとのCPU状態を不変（Immutable）なスナップショットとして記録。UIとコアロジックが完全に分離されています。
 *   **モダンで柔軟なUI:** PySide6 (Qt) を採用。ドラッグ＆ドロップで各ビューを自由に配置（上下分割・タブ化）できるドッキングウィンドウシステムを搭載。
 *   **直感的なデバッグ操作:**
-    *   **Breakpoints:** PC一致、メモリ読み書き、レジスタ変化など、柔軟な条件設定。右クリックメニューや `Delete` キーによる直感的な削除、`Enter` キーによる素早い削除承認をサポート。
+    *   **Breakpoints:** PC一致、メモリ読み書き、レジスタ変化など、柔軟な条件設定。
     *   **Code View:** アーキテクチャに依存しない汎用的な逆アセンブラ表示。実行予定の次行が常に見えるスマートスクロール機能を搭載。
-    *   **HEX / Register / Flag / Stack View:** 全ての内部状態をリアルタイムに可視化。
+    *   **HEX / Register / Flag / Stack / Memory Map View:** 全ての内部状態をリアルタイムに可視化。
 
-### 対応するZ80命令セット (Implemented Instructions)
+### 対応するアーキテクチャと命令セット
+
+#### **Z80**
 *   **転送命令:** `LD r,n`, `LD r,r'`, `LD ss,nn`, `LD HL,nn`, `PUSH`, `POP`
 *   **インデックスレジスタ (`DD`/`FD`):** `LD IX/IY,nn`, `LD A,(IX+d)`, `ADD IX,ss`, `INC IX` 等
 *   **交換命令:** `EX DE,HL`, `EX AF,AF'`, `EXX`, `EX (SP),HL`
@@ -30,6 +36,12 @@ Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ
 *   **I/O命令:** `IN A,(n)`, `OUT (n),A`
 *   **割り込み制御:** `EI`, `DI`, `IM 0/1/2`, `RETI`, `RETN`
 *   **その他:** `NOP`, `HALT`
+
+#### **MC6800**
+*   **転送命令:** `LDAA`, `LDAB`, `LDX`, `STAA`
+*   **演算命令:** `ADDA`, `ANDA`, `INCB`
+*   **分岐・制御:** `BRA`, `BNE`, `NOP`
+*   *(※主要な命令から順次実装中)*
 
 ## 🚀 インストール
 
@@ -75,12 +87,14 @@ python -m retro_core_tracer.ui.app
 ```
 
 ### 基本操作
-1.  **Load HEX/Assembly:** `File` -> `Load HEX...` または `Load Assembly...` からプログラムを読み込みます。アセンブリ形式を読み込むと、ラベル情報がデバッガ上でシンボルとして表示されます。
-2.  **Run/Step:** ツールバーのボタンで実行制御を行います。
+1.  **Load Config:** `File` -> `Load Config...` からシステム構成（YAML）を読み込みます。例: `examples/mc6800_system_config.yaml`
+2.  **Load HEX/Assembly:** `File` -> `Load HEX...` または `Load Assembly...` からプログラムを読み込みます。アセンブリ形式を読み込むと、ラベル情報がデバッガ上でシンボルとして表示されます。
+3.  **Run/Step/Reset:** ツールバーのボタンで実行制御を行います。
     *   `Step`: 1命令ずつ実行します。
     *   `Run`: 連続実行します。
     *   `Stop`: 実行を停止します。
-3.  **Breakpoints:** `Breakpoints` タブで条件を追加し、特定の状態で実行を一時停止できます。右クリックや `Delete` キーで削除可能です。
+    *   `Reset`: CPUの状態を初期化します。
+4.  **Breakpoints:** `Breakpoints` タブで条件を追加し、特定の状態で実行を一時停止できます。
 
 ## 🛠️ 開発について
 
@@ -94,14 +108,12 @@ python -m retro_core_tracer.ui.app
     *   [`transport/`](src/retro_core_tracer/transport/ARCHITECTURE_MANIFEST.md): バスとメモリデバイス。
     *   [`core/`](src/retro_core_tracer/core/ARCHITECTURE_MANIFEST.md): 抽象CPUコアとSnapshot定義。
     *   [`arch/z80/`](src/retro_core_tracer/arch/z80/ARCHITECTURE_MANIFEST.md): Z80固有の実装。
+    *   [`arch/mc6800/`](src/retro_core_tracer/arch/mc6800/ARCHITECTURE_MANIFEST.md): MC6800固有の実装。
     *   [`debugger/`](src/retro_core_tracer/debugger/ARCHITECTURE_MANIFEST.md): 実行制御とブレークポイント。
-    *   [`loader/`](src/retro_core_tracer/loader/ARCHITECTURE_MANIFEST.md): HEXファイルローダー。
+    *   [`loader/`](src/retro_core_tracer/loader/ARCHITECTURE_MANIFEST.md): HEX/Assemblyローダー。
     *   [`ui/`](src/retro_core_tracer/ui/ARCHITECTURE_MANIFEST.md): PySide6による汎用ユーザーインターフェース。
-*   `examples/`: サンプルプログラム（例: `z80_sample.hex`）。
+*   `examples/`: サンプルプログラムと構成ファイル。
 *   `tests/`: 各コンポーネントのユニットテスト。
-*   `docs/`: ドキュメントとリソース。
-    *   `spec.md`: プロジェクトの全体仕様書。
-    *   `assets/`: 画像リソース。
 *   `ARCHITECTURE_MANIFEST.md`: ルートマニフェスト（プロジェクト全体の憲法）。
 
 ---
