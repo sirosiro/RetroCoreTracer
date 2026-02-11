@@ -48,6 +48,8 @@ class BreakpointView(QWidget):
         add_form_layout.addWidget(QLabel("Value/Addr/Reg:"), 0, 2)
         self.value_input = QLineEdit()
         self.value_input.setStyleSheet("background-color: #252525; color: #EEE; border: 1px solid #444;")
+        # @intent:responsibility Enterキー押下でブレークポイントを追加できるようにします。
+        self.value_input.returnPressed.connect(self._add_breakpoint)
         add_form_layout.addWidget(self.value_input, 0, 3)
         
         self.add_button = QPushButton("Add Breakpoint")

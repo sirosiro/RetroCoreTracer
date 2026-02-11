@@ -155,29 +155,135 @@ class AssemblyLoader:
         
         return label, mnemonic, operands
 
+    def _parse_val(self, val_str: str, symbol_map: SymbolMap) -> int:
+        # @intent:utility_function 多様な数値表現（$, 0x, h）およびラベル名を安全に数値に変換します。
+        val_str = val_str.strip().replace('$', '0x')
+        val_str = re.sub(r'[hH]$', '', val_str) 
+        if val_str.startswith('0x'):
+            return int(val_str, 16)
+        try:
+            return int(val_str)
+        except ValueError:
+            if val_str in symbol_map:
+                return symbol_map[val_str]
+            raise ValueError(f"Undefined symbol or invalid value: {val_str}")
+
     def _assemble_z80(self, lines: List[str]) -> Tuple[SymbolMap, List[Tuple[int, int]]]:
         symbol_map = {}
         binary_data = []
-        current_pc = 0x0000
+        parsed_lines = []
 
         for line in lines:
-            label, mnemonic, operands = self._parse_line(line)
+            parsed_lines.append(self._parse_line(line))
+
+        # First pass: Build symbol map and calculate current_pc for labels
+        temp_pc = 0
+        for label, mnemonic, operands in parsed_lines:
             if label:
-                symbol_map[label] = current_pc
+                symbol_map[label] = temp_pc
             if not mnemonic:
                 continue
 
             if mnemonic == "ORG":
-                current_pc = int(operands.replace('$', '0x').replace('H', ''), 0)
-            elif mnemonic == "DB":
+                temp_pc = self._parse_val(operands, {}) 
+                continue
+            
+            length = 0
+            if mnemonic == "DB":
+                length = len(operands.split(','))
+            elif mnemonic in ["NOP", "HALT", "DI", "EI", "EXX", "RET", "RETI", "RETN"]:
+                length = 1
+            elif mnemonic == "EX":
+                length = 1
+            elif mnemonic == "LD":
+                if operands.upper().startswith("A,"): length = 2
+                elif operands.upper().startswith("BC,") or operands.upper().startswith("DE,") or operands.upper().startswith("HL,") or operands.upper().startswith("SP,"):
+                    length = 3
+                else: length = 2
+            elif mnemonic in ["JP", "CALL"]: length = 3
+            elif mnemonic in ["JR", "DJNZ"]: length = 2
+            elif mnemonic in ["INC", "DEC"]: length = 1
+            
+            temp_pc += length
+
+        # Second pass: Generate binary
+        current_pc = 0
+        for label, mnemonic, operands in parsed_lines:
+            if not mnemonic:
+                continue
+
+            if mnemonic == "ORG":
+                current_pc = self._parse_val(operands, {})
+                continue
+
+            opcode = None
+            operand_bytes = []
+            
+            if mnemonic == "DB":
                 for val_str in operands.split(','):
-                    val = int(val_str.strip().replace('$', '0x').replace('H', ''), 0)
+                    val = self._parse_val(val_str, symbol_map)
                     binary_data.append((current_pc, val & 0xFF))
                     current_pc += 1
-            elif mnemonic == "NOP":
-                binary_data.append((current_pc, 0x00))
-                current_pc += 1
-            # (Note: Z80 assemble logic is minimal for demo)
+                continue
+
+            if mnemonic == "NOP": opcode = 0x00
+            elif mnemonic == "HALT": opcode = 0x76
+            elif mnemonic == "DI": opcode = 0xF3
+            elif mnemonic == "EI": opcode = 0xFB
+            elif mnemonic == "EXX": opcode = 0xD9
+            elif mnemonic == "RET": opcode = 0xC9
+            elif mnemonic == "EX":
+                ops = operands.upper().replace(" ", "")
+                if ops == "DE,HL": opcode = 0xEB
+                elif ops == "AF,AF'": opcode = 0x08
+                elif ops == "(SP),HL": opcode = 0xE3
+            elif mnemonic == "LD":
+                ops = operands.upper().replace(" ", "")
+                if ops.startswith("A,"):
+                    opcode = 0x3E
+                    val = self._parse_val(operands.split(',')[1], symbol_map)
+                    operand_bytes = [val & 0xFF]
+                elif ops.startswith("BC,"):
+                    opcode = 0x01
+                    val = self._parse_val(operands.split(',')[1], symbol_map)
+                    operand_bytes = [val & 0xFF, (val >> 8) & 0xFF]
+                elif ops.startswith("DE,"):
+                    opcode = 0x11
+                    val = self._parse_val(operands.split(',')[1], symbol_map)
+                    operand_bytes = [val & 0xFF, (val >> 8) & 0xFF]
+                elif ops.startswith("HL,"):
+                    opcode = 0x21
+                    val = self._parse_val(operands.split(',')[1], symbol_map)
+                    operand_bytes = [val & 0xFF, (val >> 8) & 0xFF]
+                elif ops.startswith("SP,"):
+                    opcode = 0x31
+                    val = self._parse_val(operands.split(',')[1], symbol_map)
+                    operand_bytes = [val & 0xFF, (val >> 8) & 0xFF]
+            elif mnemonic == "JP":
+                opcode = 0xC3
+                val = self._parse_val(operands, symbol_map)
+                operand_bytes = [val & 0xFF, (val >> 8) & 0xFF]
+            elif mnemonic == "CALL":
+                opcode = 0xCD
+                val = self._parse_val(operands, symbol_map)
+                operand_bytes = [val & 0xFF, (val >> 8) & 0xFF]
+            elif mnemonic == "JR":
+                opcode = 0x18
+                target = self._parse_val(operands, symbol_map)
+                offset = (target - (current_pc + 2)) & 0xFF
+                operand_bytes = [offset]
+            elif mnemonic == "DJNZ":
+                opcode = 0x10
+                target = self._parse_val(operands, symbol_map)
+                offset = (target - (current_pc + 2)) & 0xFF
+                operand_bytes = [offset]
+
+            if opcode is not None:
+                binary_data.append((current_pc, opcode))
+                for i, b in enumerate(operand_bytes):
+                    binary_data.append((current_pc + 1 + i, b))
+                current_pc += 1 + len(operand_bytes)
+
         return symbol_map, binary_data
 
     def _assemble_mc6800(self, lines: List[str]) -> Tuple[SymbolMap, List[Tuple[int, int]]]:
@@ -198,7 +304,7 @@ class AssemblyLoader:
             
             length = 0
             if mnemonic == "ORG":
-                temp_pc = int(operands.replace('$', '0x').replace('H', ''), 0)
+                temp_pc = self._parse_val(operands, {})
                 continue
             elif mnemonic == "DB":
                 length = len(operands.split(','))
@@ -228,23 +334,24 @@ class AssemblyLoader:
                 continue
 
             if mnemonic == "ORG":
-                current_pc = int(operands.replace('$', '0x').replace('H', ''), 0)
+                current_pc = self._parse_val(operands, {})
                 continue
 
             opcode = None
             operand_bytes = []
             
             if mnemonic == "DB":
-                # @intent:responsibility DB命令により任意のバイトデータを直接配置します。
                 for val_str in operands.split(','):
-                    val_str = val_str.strip().replace('$', '0x')
                     try:
-                        val = int(val_str, 0) & 0xFF
-                        binary_data.append((current_pc, val))
+                        val = self._parse_val(val_str, symbol_map)
+                        binary_data.append((current_pc, val & 0xFF))
                         current_pc += 1
                     except ValueError:
-                        # もしラベル参照などの場合はここでは非対応（簡易実装のため）
-                        pass
+                        if val_str.strip() in symbol_map:
+                            val = symbol_map[val_str.strip()]
+                            binary_data.append((current_pc, (val >> 8) & 0xFF))
+                            binary_data.append((current_pc + 1, val & 0xFF))
+                            current_pc += 2
                 continue
 
             if mnemonic == "NOP":
@@ -252,57 +359,56 @@ class AssemblyLoader:
             elif mnemonic == "LDAA":
                 if operands.startswith('#'):
                     opcode = 0x86
-                    val = self._parse_imm8(operands)
-                    operand_bytes = [val]
+                    val = self._parse_val(operands.replace('#', ''), symbol_map)
+                    operand_bytes = [val & 0xFF]
                 elif self._is_direct_heuristic(operands):
                     opcode = 0x96
-                    addr = self._parse_addr(operands, symbol_map)
-                    operand_bytes = [addr]
+                    addr = self._parse_val(operands, symbol_map)
+                    operand_bytes = [addr & 0xFF]
                 else:
                     opcode = 0xB6
-                    addr = self._parse_addr(operands, symbol_map)
+                    addr = self._parse_val(operands, symbol_map)
                     operand_bytes = [(addr >> 8) & 0xFF, addr & 0xFF]
             elif mnemonic == "LDAB":
-                # @intent:responsibility LDAB命令をサポートし、アキュムレータBへのロードを可能にします。
                 if operands.startswith('#'):
                     opcode = 0xC6
-                    val = self._parse_imm8(operands)
-                    operand_bytes = [val]
+                    val = self._parse_val(operands.replace('#', ''), symbol_map)
+                    operand_bytes = [val & 0xFF]
                 elif self._is_direct_heuristic(operands):
                     opcode = 0xD6
-                    addr = self._parse_addr(operands, symbol_map)
-                    operand_bytes = [addr]
+                    addr = self._parse_val(operands, symbol_map)
+                    operand_bytes = [addr & 0xFF]
                 else:
                     opcode = 0xF6
-                    addr = self._parse_addr(operands, symbol_map)
+                    addr = self._parse_val(operands, symbol_map)
                     operand_bytes = [(addr >> 8) & 0xFF, addr & 0xFF]
             elif mnemonic == "ADDA":
                 if operands.startswith('#'):
                     opcode = 0x8B
-                    val = self._parse_imm8(operands)
-                    operand_bytes = [val]
+                    val = self._parse_val(operands.replace('#', ''), symbol_map)
+                    operand_bytes = [val & 0xFF]
             elif mnemonic == "STAA":
                 opcode = 0xB7
-                addr = self._parse_addr(operands, symbol_map)
+                addr = self._parse_val(operands, symbol_map)
                 operand_bytes = [(addr >> 8) & 0xFF, addr & 0xFF]
             elif mnemonic == "BRA":
                 opcode = 0x20
-                target = self._parse_addr(operands, symbol_map)
-                offset = target - (current_pc + 2)
-                operand_bytes = [offset & 0xFF]
+                target = self._parse_val(operands, symbol_map)
+                offset = (target - (current_pc + 2)) & 0xFF
+                operand_bytes = [offset]
             elif mnemonic == "BNE":
                 opcode = 0x26
-                target = self._parse_addr(operands, symbol_map)
-                offset = target - (current_pc + 2)
-                operand_bytes = [offset & 0xFF]
+                target = self._parse_val(operands, symbol_map)
+                offset = (target - (current_pc + 2)) & 0xFF
+                operand_bytes = [offset]
             elif mnemonic == "BEQ":
                 opcode = 0x27
-                target = self._parse_addr(operands, symbol_map)
-                offset = target - (current_pc + 2)
-                operand_bytes = [offset & 0xFF]
+                target = self._parse_val(operands, symbol_map)
+                offset = (target - (current_pc + 2)) & 0xFF
+                operand_bytes = [offset]
             elif mnemonic == "JSR":
                 opcode = 0xBD
-                addr = self._parse_addr(operands, symbol_map)
+                addr = self._parse_val(operands, symbol_map)
                 operand_bytes = [(addr >> 8) & 0xFF, addr & 0xFF]
             elif mnemonic == "RTS":
                 opcode = 0x39
@@ -314,15 +420,6 @@ class AssemblyLoader:
                 current_pc += len(bus_ops)
 
         return symbol_map, binary_data
-
-    def _parse_imm8(self, operand: str) -> int:
-        return int(operand.replace('#', '').replace('$', '0x'), 0) & 0xFF
-
-    def _parse_addr(self, operand: str, symbols: SymbolMap) -> int:
-        operand = operand.strip()
-        if operand in symbols:
-            return symbols[operand]
-        return int(operand.replace('$', '0x'), 0) & 0xFFFF
 
     def _is_direct_heuristic(self, operand: str) -> bool:
         if operand.startswith('$') and len(operand) <= 3: return True
