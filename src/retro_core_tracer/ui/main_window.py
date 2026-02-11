@@ -21,6 +21,7 @@ from retro_core_tracer.ui.hex_view import HexView
 from retro_core_tracer.ui.stack_view import StackView
 from retro_core_tracer.ui.memory_map_view import MemoryMapView
 from retro_core_tracer.ui.breakpoint_view import BreakpointView
+from retro_core_tracer.ui.core_canvas import CoreCanvas
 
 class MainWindow(QMainWindow):
     """
@@ -101,9 +102,15 @@ class MainWindow(QMainWindow):
         toolbar.addAction(reset_action)
 
     def _setup_docks(self):
-        # Code View (Main Center)
+        # Core Canvas (Main Center)
+        self.core_canvas = CoreCanvas()
+        self.setCentralWidget(self.core_canvas)
+
+        # Code View
+        self.code_dock = QDockWidget("Code", self)
         self.code_view = CodeView()
-        self.setCentralWidget(self.code_view)
+        self.code_dock.setWidget(self.code_view)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.code_dock)
 
         # Register View
         self.reg_dock = QDockWidget("Registers", self)
@@ -164,6 +171,7 @@ class MainWindow(QMainWindow):
                 self.stack_view.set_cpu(self.cpu, self.bus)
                 self.memory_map_view.set_config(self.config, self.bus)
                 self.breakpoint_view.set_cpu(self.cpu)
+                self.core_canvas.set_cpu(self.cpu)
                 
                 self._update_all_views()
                 
@@ -275,3 +283,8 @@ class MainWindow(QMainWindow):
         self.hex_view.update_view()
         self.stack_view.update_view()
         self.memory_map_view.update_view()
+
+        if self.debugger:
+            snapshot = self.debugger.get_last_snapshot()
+            if snapshot:
+                self.core_canvas.update_view(snapshot)
