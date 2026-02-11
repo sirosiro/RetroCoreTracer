@@ -1,15 +1,17 @@
 ; MC6800 Sample Program
-; LDAA #$10
-; ADDA #$20
-; STAA $1000
-; Loop: NOP
-; BRA Loop
+; Demonstrates reset vector usage
 
-    ORG $0000
+    ORG $8000
+
 START:
-    LDAA #$10
-    ADDA #$20
-    STAA $1000
+    LDAA #$12
+    LDAB #$34
+    ADDA #$01
+    STAA $0000
+    
 LOOP:
-    NOP
     BRA LOOP
+
+; リセットベクトル設定
+    ORG $FFFE
+    DB $80, $00 ; STARTのアドレス ($8000)

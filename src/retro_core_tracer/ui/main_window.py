@@ -12,7 +12,7 @@ from PySide6.QtGui import QAction, QIcon, QCloseEvent
 
 from retro_core_tracer.config.loader import ConfigLoader
 from retro_core_tracer.config.builder import SystemBuilder
-from retro_core_tracer.loader.loader import IntelHexLoader, AssemblyLoader
+from retro_core_tracer.loader.loader import IntelHexLoader, SRecordLoader, AssemblyLoader
 from retro_core_tracer.debugger.debugger import Debugger, BreakpointCondition, BreakpointConditionType
 from retro_core_tracer.ui.register_view import RegisterView
 from retro_core_tracer.ui.flag_view import FlagView
@@ -128,9 +128,13 @@ class MainWindow(QMainWindow):
         
         file_menu.addSeparator()
         
-        load_hex_action = QAction("Load &HEX...", self)
+        load_hex_action = QAction("Load Intel &HEX...", self)
         load_hex_action.triggered.connect(self._load_hex_file)
         file_menu.addAction(load_hex_action)
+        
+        load_srec_action = QAction("Load Motorola &S-Record...", self)
+        load_srec_action.triggered.connect(self._load_srec_file)
+        file_menu.addAction(load_srec_action)
         
         self.load_asm_action = QAction("Load &Assembly...", self)
         self.load_asm_action.triggered.connect(self._load_assembly_file)
@@ -270,6 +274,9 @@ class MainWindow(QMainWindow):
                 self.stack_view.set_cpu(self.cpu, self.bus)
                 self.memory_map_view.set_config(self.config, self.bus)
                 self.breakpoint_view.set_cpu(self.cpu)
+                
+                # @intent:responsibility ビジュアライザーに構成情報とCPUを渡します。
+                self.core_canvas.set_config(self.config)
                 self.core_canvas.set_cpu(self.cpu)
                 
                 self._update_all_views()
@@ -283,15 +290,35 @@ class MainWindow(QMainWindow):
         if not self.bus:
             QMessageBox.warning(self, "Warning", "Please load a config file first.")
             return
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open HEX File", "", "HEX Files (*.hex);;All Files (*)")
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open Intel HEX File", "", "HEX Files (*.hex);;All Files (*)")
         if file_name:
             try:
                 loader = IntelHexLoader()
                 loader.load_intel_hex(file_name, self.bus)
+                # @intent:responsibility コードロード後にリセットを行い、ベクタを反映させます。
+                self.cpu.reset()
+                self.code_view.reset_cache()
                 self._update_all_views()
-                self.statusBar().showMessage(f"Loaded HEX: {file_name}")
+                self.statusBar().showMessage(f"Loaded HEX and Reset: {file_name}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load HEX: {str(e)}")
+
+    def _load_srec_file(self):
+        if not self.bus:
+            QMessageBox.warning(self, "Warning", "Please load a config file first.")
+            return
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open Motorola S-Record File", "", "S-Record Files (*.s19 *.s28 *.s37 *.srec);;All Files (*)")
+        if file_name:
+            try:
+                loader = SRecordLoader()
+                loader.load_srecord(file_name, self.bus)
+                # @intent:responsibility コードロード後にリセットを行い、ベクタを反映させます。
+                self.cpu.reset()
+                self.code_view.reset_cache()
+                self._update_all_views()
+                self.statusBar().showMessage(f"Loaded S-Record and Reset: {file_name}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load S-Record: {str(e)}")
 
     def _load_assembly_file(self):
         if not self.bus:
@@ -306,8 +333,12 @@ class MainWindow(QMainWindow):
                 self.cpu.set_symbol_map(symbol_map)
                 self.code_view.set_symbol_map(symbol_map)
                 self.breakpoint_view.set_symbol_map(symbol_map)
+                
+                # @intent:responsibility コードロード後にリセットを行い、ベクタを反映させます。
+                self.cpu.reset()
+                self.code_view.reset_cache()
                 self._update_all_views()
-                self.statusBar().showMessage(f"Loaded assembly: {file_name} ({arch})")
+                self.statusBar().showMessage(f"Loaded assembly and Reset: {file_name} ({arch})")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load assembly: {str(e)}")
 

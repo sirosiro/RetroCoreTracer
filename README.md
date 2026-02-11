@@ -21,6 +21,7 @@ Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ
 *   **直感的なデバッグ操作:**
     *   **Breakpoints:** PC一致、メモリ読み書き、レジスタ変化など、柔軟な条件設定。
     *   **Code View:** アーキテクチャに依存しない汎用的な逆アセンブラ表示。実行予定の次行が常に見えるスマートスクロール機能を搭載。
+    *   **Multiple Loaders:** Intel HEXに加え、Motorola S-Record形式をサポート。
     *   **HEX / Register / Flag / Stack / Memory Map View:** 全ての内部状態をリアルタイムに可視化。
 
 ### 対応するアーキテクチャと命令セット

@@ -24,12 +24,21 @@ class SystemBuilder:
             cpu = Z80Cpu(bus)
         elif config.architecture == "MC6800":
             cpu = Mc6800Cpu(bus)
+            # @intent:rationale MC6800の場合はリセットベクトルの使用可否を設定します。
+            if config.initial_state.use_reset_vector:
+                cpu.set_use_reset_vector(True)
         else:
             raise ValueError(f"Unsupported architecture: {config.architecture}")
             
         # Apply initial state
+        # @intent:rationale リセットベクトルを使用する場合は、ここでのPC上書きをスキップし、
+        #                  後の reset() 呼び出しでベクトルから読み込ませます。
+        cpu.reset()
         state = cpu.get_state()
-        state.pc = config.initial_state.pc
+        
+        if not config.initial_state.use_reset_vector:
+            state.pc = config.initial_state.pc
+            
         state.sp = config.initial_state.sp
         
         # Apply other registers if specified

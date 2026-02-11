@@ -10,8 +10,9 @@ memory_map:
     label: "System ROM"
 
 initial_state:
-  pc: 0x0000
+  pc: 0x0000  # use_reset_vector が true の場合は無視されます
   sp: 0x7FFF
+  use_reset_vector: true
   registers:
     a: 0x00
     b: 0x00

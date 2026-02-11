@@ -33,6 +33,7 @@ class ConfigLoader:
         initial_state = CpuInitialState(
             pc=self._parse_int(initial_state_data.get("pc", 0)),
             sp=self._parse_int(initial_state_data.get("sp", 0)),
+            use_reset_vector=bool(initial_state_data.get("use_reset_vector", False)),
             registers=initial_state_data.get("registers", {})
         )
             

@@ -19,10 +19,34 @@ class Mc6800Cpu(AbstractCpu):
     # @intent:responsibility Mc6800Cpuを初期化します。
     def __init__(self, bus: Bus):
         super().__init__(bus)
+        self._use_reset_vector = False
+
+    # @intent:responsibility リセットベクトルを使用するかどうかを設定します。
+    def set_use_reset_vector(self, use: bool) -> None:
+        self._use_reset_vector = use
 
     # @intent:responsibility MC6800の初期状態を生成します。
     def _create_initial_state(self) -> Mc6800CpuState:
         return Mc6800CpuState()
+
+    # @intent:responsibility CPUをリセットします。MC6800の場合、オプションでリセットベクトルを読み込みます。
+    def reset(self) -> None:
+        """
+        CPUをリセットします。
+        use_reset_vector が True の場合、$FFFE-$FFFF から開始アドレスを読み込みます。
+        """
+        super().reset() # _state を初期化
+        
+        if self._use_reset_vector:
+            # @intent:rationale MC6800の実機仕様に基づき、リセット時に $FFFE-$FFFF からPCを読み込みます。
+            # バス経由で直接読み込むため、メモリが正しくロードされている必要があります。
+            try:
+                hi = self._bus.peek(0xFFFE)
+                lo = self._bus.peek(0xFFFF)
+                self._state.pc = (hi << 8) | lo
+            except IndexError:
+                # ベクタ領域がマップされていない場合は、デフォルト(0x0000)のままにするか警告
+                pass
 
     # @intent:responsibility メモリから次のオペコードをフェッチします。
     def _fetch(self) -> int:

@@ -39,83 +39,33 @@
 - **原則: UIの演出（アニメーション）は、CPUの実行タイミングから非同期に行われる。**
   - **理由:** CPUコアの実行速度をUI描画が阻害しないようにするため。また、一瞬で終わるCPUの計算プロセスを、人間が理解できる速度で「後追い再生（Replay）」することで、教育的な効果を高めるため。
 
-### 2. 主要なアーキテクチャ決定の記録 (Key Architectural Decisions)
-
-- **Date:** 2026-02-08
-- **Core Principle:** UIは特定のCPUアーキテクチャの実装詳細を知ってはならない。
-- **Decision:** データ駆動型UIへのリファクタリング。
-- **Rationale:** MC6800対応に際し、Z80固有の記述がUIに散在していた課題を解決するため。
-
-- **Date:** 2026-02-10
-- **Core Principle:** UIコンポーネントは、統一された初期化・更新インターフェースを持つ。
-- **Decision:** 全てのビュー（CodeView, HexView, StackView等）に対し、コンストラクタによる依存性注入ではなく、`set_cpu` / `set_bus` メソッドによる遅延初期化と、引数なしの `update_view` メソッドによる再描画を強制する。
-- **Rationale:** 設定ファイル読み込み時に動的にシステム構成が変わるため、ビューのインスタンス再生成を行わずに依存オブジェクト（CPU/Bus）を差し替え可能にする必要がある。
-
-- **Date:** 2026-02-10
-- **Core Principle:** ユーザビリティの向上。
-- **Decision:** 実行制御に「Reset」機能を追加。
-- **Rationale:** 開発サイクル（コード修正 -> ロード -> 実行 -> リセット -> 再実行）をスムーズにするため。
+### 2. 主要なアーキテクチャ決定 of 記録 (Key Architectural Decisions)
 
 - **Date:** 2026-02-11
-- **Core Principle:** 教育のための透明性を、実行速度よりも優先する。
-- **Decision:** ビジュアライザー (CoreCanvas) の導入と、Bus Glow (バス発光演出) の実装。
-- **Rationale:** 「計算の本質を可視化する」というプロジェクトの第一目的を達成するため。
-- **Decision:** バスのアニメーションは、Snapshotに含まれる `bus_activity` ログに基づいて、UI側で事後的に生成される。
-- **Rationale:** CPUコアがUI描画を待つ密結合（同期実行）を回避し、Core層の純粋性を保つため。Coreは事実（ログ）を提供し、UIがそれを演出（アニメーション）として解釈する役割分担を徹底する。
+- **Core Principle:** 教育のための透明性。
+- **Decision:** `CoreCanvas` にパストレース型のアニメーション機能を導入する。
+- **Rationale:** データの流れを単なる直線移動ではなく、画面上に描画されたバス配線に沿って移動させることで、コンピュータの電気的な動作をより直感的に理解できるようにするため。
+
+- **Date:** 2026-02-11
+- **Core Principle:** 設定駆動型レイアウト。
+- **Decision:** バス配線の座標とアニメーションパスを同一の計算ロジックから生成する。
+- **Rationale:** システム構成（Memory Map/IO Map）によってデバイスの配置が変わっても、アニメーションが常に正確に配線上をトレースすることを保証するため。
 
 ### 3. モジュール構成 (Module Structure)
 
-- **`app.py`**: アプリケーションのエントリーポイント。
-- **`main_window.py`**: メインウィンドウのレイアウトと状態管理。
-- **`register_view.py`**: 汎用的なレジスタ表示（動的生成）。
-- **`flag_view.py`**: 汎用的なフラグ表示（動的生成）。
-- **`code_view.py`**: 汎用的な逆アセンブル表示。
-- **`hex_view.py`**: メモリダンプ表示。
-- **`stack_view.py`**: スタック領域表示。
-- **`breakpoint_view.py`**: ブレークポイント管理（多角的UI）。
-- **`core_canvas.py`**: CPU内部ブロック図とバスのアニメーション表示。
-- **`memory_map_view.py`**: メモリマップ表示。
+- **`core_canvas.py`**: CPU、バス、メモリ、IOの動的なブロック図とパストレースアニメーションを管理する。
 
 ### 4. コンポーネント設計仕様 (Component Design Specifications)
 
-#### 4.1. MainWindow
-- **責務:**
-    - アプリケーション全体のライフサイクル管理。
-    - システム構成（Config, CPU, Bus）のロードと構築。
-    - 各子ビューへの依存性の注入 (`set_cpu`, `set_bus`)。
-    - 実行ループ（Run/Step/Reset）の制御。
-
-#### 4.4. RegisterView (レジスタビュー)
-- **責務:** CPUアーキテクチャに依存しない汎用的なレジスタ値を表示する。
-- **提供するAPI:**
-    - `set_cpu(cpu: AbstractCpu)`: レイアウトを構築する。
-    - `update_registers()`: 値を更新する。
-
-#### 4.5. FlagView (フラグビュー)
-- **責務:** CPUアーキテクチャに依存しない汎用的なフラグ状態を表示する。
-- **提供するAPI:**
-    - `set_cpu(cpu: AbstractCpu)`: ラベルを構築する。
-    - `update_flags()`: 状態を更新する。
-
-#### 4.6. HexView / StackView
-- **責務:** バス上のメモリデータを可視化する。
-- **提供するAPI:**
-    - `set_bus(bus: Bus)` / `set_cpu(cpu: AbstractCpu, bus: Bus)`
-    - `update_view()`: 現在の状態に基づいて再描画する。
-
-#### 4.8. CodeView (コードビュー)
-- **責務:** メモリ上の機械語を逆アセンブルして表示し、現在のPCをハイライトする。
-- **API:**
-    - `set_cpu(cpu: AbstractCpu)`
-    - `set_symbol_map(map: SymbolMap)`
-    - `update_code(pc: int)`: 指定PCを中心に表示を更新。
-
 #### 4.9. CoreCanvas (ビジュアライザー)
 - **責務:**
-    - CPUの内部構造（ALU, レジスタ, 制御ユニット）とバス（アドレスバス, データバス）をグラフィカルに描画する。
-    - `Snapshot` に記録された `bus_activity` を解析し、バス上のデータの流れをアニメーションとして再生する（Bus Glow）。
+    - CPUの内部構造、バス（アドレス/データ）、メモリ、IOをグラフィカルに描画する。
+    - `SystemConfig` に基づき、メモリマップとIOマップを静的に描画する。
+    - `Snapshot` に記録された `bus_activity` を解析し、バス配線に沿ったアニメーションを再生する。
 - **提供するAPI:**
-    - `set_cpu(cpu: AbstractCpu)`: CPUタイプに応じたブロック図を描画する。
-    - `update_view(snapshot: Snapshot)`: スナップショットを受け取り、アニメーションキューにイベントを追加して順次再生する。
+    - `set_cpu(cpu: AbstractCpu)`
+    - `set_config(config: SystemConfig)`
+    - `update_view(snapshot: Snapshot)`
 - **重要なアルゴリズム:**
-    - **非同期アニメーションキュー:** CPUのステップ実行が連続で行われた場合でも、アニメーションを取りこぼさずに順次再生するためのキューイング機構。
+    - **パス計算:** デバイスの種類（Memory/IO）とアクセスタイプ（READ/WRITE）に応じて、CPUのデータポートから対象デバイスまでの折れ線経路（座標リスト）を算出する。
+    - **パストレース:** `BusSignal` は、保持している座標リストを `progress` (0.0 - 1.0) に基づいて線形補間し、経由地（Waypoint）を順番に辿ることで、曲がった配線上を移動する。
