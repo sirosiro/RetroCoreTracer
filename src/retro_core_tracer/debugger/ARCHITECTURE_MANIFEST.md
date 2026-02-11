@@ -60,6 +60,11 @@
 - **Consequences:** `Snapshot`オブジェクトには、ブレークポイント評価に必要な全ての情報が含まれている必要がある。
 -->
 
+- **Date:** 2026-02-11
+- **Core Principle:** デバッガの柔軟性。
+- **Decision:** `BreakpointCondition` に `enabled` フラグを追加し、ブレークポイントの有効/無効を動的に切り替え可能にする。
+- **Rationale:** デバッグ中に一時的にブレークポイントを無効化したいケース（特定の条件でのみ停止させたい場合など）に対応し、UXを向上させるため。削除して再追加する手間を省く。
+
 ### 3. AIとの協調に関する指針 (AI Collaboration Policy)
 
 *このセクションは、AIがどう振る舞うべきかの指針を記述します。*
@@ -87,7 +92,8 @@
     - `value: Optional[int] = None`: `PC_MATCH`や`REGISTER_VALUE`の場合に比較する値。
     - `address: Optional[int] = None`: `MEMORY_READ`や`MEMORY_WRITE`の場合に監視するメモリアドレス。
     - `register_name: Optional[str] = None`: `REGISTER_VALUE`や`REGISTER_CHANGE`の場合に監視するレジスタの名前（文字列）。
-- **状態とライフサイクル (State and Lifecycle):** `frozen=True`が設定されており、インスタンス生成後は完全に不変である。これにより、条件の一貫性が保証される。
+    - `enabled: bool = True`: ブレークポイントの有効/無効状態。
+- **状態とライフサイクル (State and Lifecycle):** `frozen=True`が設定されており、インスタンス生成後は完全に不変である。これにより、条件の一貫性が保証される。有効/無効の切り替えは、新しいインスタンスへの置換（Copy-on-Write）で行う。
 
 #### 4.3. Debugger (主要コンポーネント)
 - **責務 (Responsibility):**
@@ -101,6 +107,9 @@
     - `add_breakpoint(self, condition: BreakpointCondition) -> None`:
         - **責務:** 新しいブレークポイント条件をデバッガのリストに追加する。重複する条件は追加しない。
         - **引数:** `condition` (`BreakpointCondition`) - 追加するブレークポイント条件。
+    - `update_breakpoint(self, old_condition: BreakpointCondition, new_condition: BreakpointCondition) -> None`:
+        - **責務:** 既存のブレークポイント条件を新しい条件で置換する（主に有効/無効の切り替えに使用）。
+        - **引数:** `old_condition`, `new_condition` - 置換対象と新しい条件。
     - `remove_breakpoint(self, condition: BreakpointCondition) -> None`:
         - **責務:** 既存のブレークポイント条件をデバッガのリストから削除する。
         - **引数:** `condition` (`BreakpointCondition`) - 削除するブレークポイント条件。
@@ -114,9 +123,9 @@
     - `run(self) -> None`:
         - **責務:** CPUの実行を連続的に継続する。ブレークポイントにヒットするか、`stop()`メソッドが呼び出されるまでループを続ける。
         - **実行制御フロー:**
-            1. `PC_MATCH`タイプのブレークポイントを命令実行前にチェックする。
+            1. `PC_MATCH`タイプのブレークポイント（かつ`enabled`がTrue）を命令実行前にチェックする。
             2. `step_instruction()`を呼び出し、命令を実行し`Snapshot`を取得する。
-            3. `_check_other_breakpoints()`を呼び出し、`PC_MATCH`以外のブレークポイント（メモリ読み書き、レジスタ値）を`Snapshot`に基づいてチェックする。
+            3. `_check_other_breakpoints()`を呼び出し、`PC_MATCH`以外のブレークポイント（メモリ読み書き、レジスタ値、かつ`enabled`がTrue）を`Snapshot`に基づいてチェックする。
             4. いずれかのブレークポイントにヒットした場合、連続実行を停止する。
     - `stop(self) -> None`:
         - **責務:** `run()`メソッドで実行中の連続実行ループを中断するようシグナルを送る。

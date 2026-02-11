@@ -4,9 +4,13 @@ Core Canvas モジュール。
 CPUの内部構造とバスアクティビティを可視化するための
 グラフィカルなキャンバスコンポーネントを提供します。
 """
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsSimpleTextItem, QGraphicsLineItem
-from PySide6.QtCore import Qt, QTimer, QPointF
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGraphicsView, QGraphicsScene, 
+    QGraphicsRectItem, QGraphicsSimpleTextItem, QGraphicsLineItem,
+    QSlider, QLabel
+)
+from PySide6.QtCore import Qt, QTimer, QPointF, Slot
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QWheelEvent
 
 from typing import Optional, List, Deque, Tuple
 from collections import deque
@@ -27,10 +31,8 @@ class BusSignal:
 # @intent:responsibility CPUとメモリ、それらを繋ぐバスのグラフィカルな表現を管理します。
 class CoreCanvas(QGraphicsView):
     """
-    CPUブロック図とバスアニメーションを表示するキャンバス。
+    CPUブロック図とバスアニメーションを表示するキャンバス（ビュー部分）。
     """
-    
-    # @intent:responsibility CoreCanvasを初期化し、シーンとアニメーションタイマーを設定します。
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scene = QGraphicsScene(self)
@@ -40,6 +42,11 @@ class CoreCanvas(QGraphicsView):
         self.setRenderHint(QPainter.Antialiasing)
         self.setDragMode(QGraphicsView.ScrollHandDrag)
         self.setBackgroundBrush(QBrush(QColor("#1E1E1E")))
+        
+        # ズームの設定
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self._zoom_factor = 1.0
         
         # アニメーション用キューとタイマー
         self._animation_queue: Deque[BusAccess] = deque()
@@ -56,12 +63,27 @@ class CoreCanvas(QGraphicsView):
         
         self._setup_static_scene()
 
+    # @intent:responsibility マウスホイールによるズームを処理します（スライダーと併用可能）。
+    def wheelEvent(self, event: QWheelEvent):
+        if event.modifiers() & Qt.ControlModifier:
+            # スライダーがある場合は親ウィジェットに通知してスライダーを動かすのが理想だが、
+            # ここではシンプルに自身のズームだけ処理し、あとで連携を考える
+            pass 
+        super().wheelEvent(event)
+
+    # @intent:responsibility 外部からズーム倍率を設定します。
+    def set_zoom(self, scale_factor: float):
+        # 現在のトランスフォームをリセットしてから新しいスケールを適用
+        self.resetTransform()
+        self.scale(scale_factor, scale_factor)
+        self._zoom_factor = scale_factor
+
     # @intent:responsibility 静的なシーン要素（CPU箱、メモリ箱、バスライン）を描画します。
     def _setup_static_scene(self):
         self.scene.clear()
         
         # フォント設定
-        font = QFont("Monospace", 10)
+        font = QFont("monospace", 10)
         
         # CPU Box
         x, y, w, h = self.CPU_RECT
@@ -78,48 +100,38 @@ class CoreCanvas(QGraphicsView):
         text.setPos(mx + 10, my + 10)
         
         # Address Bus Line (CPU -> Memory)
-        # 簡易的にCPU下部からメモリ上部へ直線を引く
         self.scene.addLine(x + 50, y + h, x + 50, my, QPen(QColor("#AAAA00"), 3)) # Yellow
         
         # Data Bus Line (Bidirectional)
         self.scene.addLine(x + 150, y + h, x + 150, my, QPen(QColor("#00AAFF"), 3)) # Blue
 
-    # @intent:responsibility 表示対象のCPUを設定します。将来的にCPU種別ごとのレイアウト変更に使用します。
+    # @intent:responsibility 表示対象のCPUを設定します。
     def set_cpu(self, cpu: AbstractCpu):
         self._cpu = cpu
-        # TODO: CPUタイプに応じた詳細なブロック図の再描画
 
     # @intent:responsibility スナップショットを受け取り、バスアクセスをアニメーションキューに追加します。
-    # @intent:rationale CPUの実行とアニメーション再生を非同期にするため、キューイングします。
     def update_view(self, snapshot: Snapshot):
         for access in snapshot.bus_activity:
             self._animation_queue.append(access)
     
     # @intent:responsibility アニメーションの1フレームを処理します。
     def _animate_step(self):
-        # 1. 新しいシグナルの生成（キューにあり、かつ現在のアクティブシグナルが少なければ）
         if self._animation_queue and len(self._active_signals) < 5:
             access = self._animation_queue.popleft()
             self._spawn_signal(access)
             
-        # 2. シグナルの移動と削除
         active_signals_next = []
         for signal in self._active_signals:
-            signal.progress += 0.05 # Speed
+            signal.progress += 0.05
             if signal.progress >= 1.0:
-                # ゴールに到達（ここで発光エフェクトなどを入れると良い）
                 continue
             
-            # 位置計算 (線形補間)
-            # p = (1-t)*start + t*end
             new_x = (1 - signal.progress) * signal.start_pos.x() + signal.progress * signal.end_pos.x()
             new_y = (1 - signal.progress) * signal.start_pos.y() + signal.progress * signal.end_pos.y()
             signal.current_pos = QPointF(new_x, new_y)
             active_signals_next.append(signal)
             
         self._active_signals = active_signals_next
-        
-        # 3. 再描画
         self._draw_dynamic_elements()
 
     # @intent:responsibility BusAccess情報に基づいて新しいBusSignalを生成します。
@@ -127,7 +139,6 @@ class CoreCanvas(QGraphicsView):
         x, y, w, h = self.CPU_RECT
         mx, my, mw, mh = self.MEM_RECT
         
-        # 座標定義
         cpu_data_port = QPointF(x + 150, y + h)
         mem_data_port = QPointF(x + 150, my)
         
@@ -136,28 +147,23 @@ class CoreCanvas(QGraphicsView):
         color = QColor("white")
         
         if access.access_type == BusAccessType.READ:
-            # Memory -> CPU
             start_pos = mem_data_port
             end_pos = cpu_data_port
-            color = QColor("#00AAFF") # Blue for Read
+            color = QColor("#00AAFF")
         elif access.access_type == BusAccessType.WRITE:
-            # CPU -> Memory
             start_pos = cpu_data_port
             end_pos = mem_data_port
-            color = QColor("#FF5555") # Red for Write
+            color = QColor("#FF5555")
             
         self._active_signals.append(BusSignal(start_pos, end_pos, color, f"{access.data:02X}"))
 
     # @intent:responsibility 動的なアニメーション要素（光の粒）を描画します。
     def _draw_dynamic_elements(self):
-        # 既存の動的アイテムを削除（効率化の余地あり）
-        # 注: ここでは簡易的に実装しているが、本来はQGraphicsItemを保持してmoveさせるべき
         for item in self.scene.items():
             if getattr(item, "is_dynamic", False):
                 self.scene.removeItem(item)
                 
         for signal in self._active_signals:
-            # 光の粒
             radius = 5
             ellipse = self.scene.addEllipse(
                 signal.current_pos.x() - radius, 
@@ -167,8 +173,78 @@ class CoreCanvas(QGraphicsView):
             )
             ellipse.is_dynamic = True
             
-            # 値テキスト
             text = self.scene.addSimpleText(signal.data_label)
             text.setBrush(QBrush(signal.color))
             text.setPos(signal.current_pos.x() + 10, signal.current_pos.y() - 10)
             text.is_dynamic = True
+
+# @intent:responsibility CoreCanvasとズーム用スライダーを組み合わせたウィジェットを提供します。
+class CoreCanvasWidget(QWidget):
+    """
+    CoreCanvasとズームコントロールを含むコンテナウィジェット。
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
+        
+        # Canvas
+        self.canvas = CoreCanvas()
+        self.layout.addWidget(self.canvas)
+        
+        # Control Bar
+        control_layout = QHBoxLayout()
+        control_layout.setContentsMargins(5, 5, 5, 5)
+        
+        label = QLabel("Zoom:")
+        label.setStyleSheet("color: #BBBBBB;")
+        control_layout.addWidget(label)
+        
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setRange(10, 300) # 10% to 300%
+        self.zoom_slider.setValue(100)
+        self.zoom_slider.setTickPosition(QSlider.TicksBelow)
+        self.zoom_slider.setTickInterval(50)
+        self.zoom_slider.valueChanged.connect(self._on_zoom_changed)
+        # スライダーのスタイル
+        self.zoom_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #333;
+                height: 8px;
+                background: #252525;
+                margin: 2px 0;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #00AAAA;
+                border: 1px solid #00AAAA;
+                width: 14px;
+                height: 14px;
+                margin: -4px 0;
+                border-radius: 7px;
+            }
+        """)
+        control_layout.addWidget(self.zoom_slider)
+        
+        self.zoom_label = QLabel("100%")
+        self.zoom_label.setStyleSheet("color: #BBBBBB; min-width: 40px; text-align: right;")
+        control_layout.addWidget(self.zoom_label)
+        
+        self.layout.addLayout(control_layout)
+        
+        # 最小サイズ設定（潰れ防止）
+        self.setMinimumSize(400, 300)
+
+    @Slot(int)
+    def _on_zoom_changed(self, value: int):
+        scale = value / 100.0
+        self.canvas.set_zoom(scale)
+        self.zoom_label.setText(f"{value}%")
+
+    # Delegate methods to inner canvas
+    def set_cpu(self, cpu: AbstractCpu):
+        self.canvas.set_cpu(cpu)
+
+    def update_view(self, snapshot: Snapshot):
+        self.canvas.update_view(snapshot)

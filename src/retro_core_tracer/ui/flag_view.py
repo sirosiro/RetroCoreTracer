@@ -19,6 +19,10 @@ class FlagView(QWidget):
     # @intent:responsibility FlagViewウィジェットを初期化します。
     def __init__(self, parent=None):
         super().__init__(parent)
+        
+        # Apply dark theme
+        self.setStyleSheet("background-color: #121212; color: #BBBBBB;")
+        
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(10, 10, 10, 10)
         self.layout.setSpacing(15)

@@ -39,6 +39,12 @@ class AbstractCpu(ABC):
         # 逆引きマップを作成して、アドレスからラベルを素早く引けるようにする
         self._reverse_symbol_map = {addr: name for name, addr in symbol_map.items()}
 
+    def get_symbol_map(self) -> SymbolMap:
+        """
+        現在設定されているシンボルマップを返します。
+        """
+        return self._symbol_map
+
     # @intent:responsibility 初期状態のCpuStateオブジェクトを生成します。
     # @intent:rationale 各CPUアーキテクチャで初期状態が異なる可能性があるため、抽象メソッドとして定義します。
     @abstractmethod

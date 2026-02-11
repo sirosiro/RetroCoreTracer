@@ -24,7 +24,7 @@ class StackView(QWidget):
         self.editor.setFont(get_monospace_font(10))
         self.editor.setReadOnly(True)
         self.editor.setWordWrapMode(QTextOption.NoWrap)
-        self.editor.setStyleSheet("background-color: #101010; color: #BBBBBB;")
+        self.editor.setStyleSheet("background-color: #121212; color: #BBBBBB;")
         self.layout.addWidget(self.editor)
         
         self._cpu: Optional[AbstractCpu] = None

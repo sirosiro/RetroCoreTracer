@@ -9,7 +9,7 @@ from PySide6.QtGui import QFont, QFontDatabase
 def get_monospace_font_family() -> str:
     """
     現在のシステムで利用可能な、最適な等幅フォントのフォミリー名を返します。
-    優先順位: Consolas -> Menlo -> Monaco -> Courier New -> Monospace
+    優先順位: Consolas -> Menlo -> Monaco -> Courier New -> (System Default)
     """
     preferred_fonts = ["Consolas", "Menlo", "Monaco", "Courier New"]
     available_families = QFontDatabase.families()

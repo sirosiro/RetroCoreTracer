@@ -24,7 +24,7 @@ class MemoryMapView(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setStyleSheet("background-color: #101010; color: #BBBBBB; gridline-color: #303030;")
+        self.table.setStyleSheet("QTableWidget { background-color: #121212; color: #BBBBBB; gridline-color: #303030; } QHeaderView::section { background-color: #252525; color: #BBBBBB; }")
         
         self.layout.addWidget(self.table)
         self._config: Optional[SystemConfig] = None

@@ -19,6 +19,10 @@ class RegisterView(QWidget):
     # @intent:responsibility RegisterViewウィジェットを初期化します。
     def __init__(self, parent=None):
         super().__init__(parent)
+        
+        # Apply dark theme
+        self.setStyleSheet("background-color: #121212; color: #BBBBBB;")
+        
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(5, 5, 5, 5)
         
@@ -46,10 +50,27 @@ class RegisterView(QWidget):
         
         for group in layout_info:
             group_box = QGroupBox(group.group_name)
-            group_box.setStyleSheet("QGroupBox { font-weight: bold; border: 1px solid #555; margin-top: 1ex; color: #EEE; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top center; padding: 0 3px; }")
+            # border: none にしつつ、タイトル分のスペースを確保
+            group_box.setStyleSheet("""
+                QGroupBox { 
+                    font-weight: bold; 
+                    border: 1px solid #222; 
+                    border-radius: 4px;
+                    margin-top: 20px; 
+                    color: #EEE; 
+                    background-color: #121212;
+                } 
+                QGroupBox::title { 
+                    subcontrol-origin: margin; 
+                    subcontrol-position: top left; 
+                    padding: 0 5px; 
+                    left: 10px;
+                    color: #00AAAA;
+                }
+            """)
             group_layout = QFormLayout(group_box)
             group_layout.setLabelAlignment(Qt.AlignLeft)
-            group_layout.setContentsMargins(10, 10, 10, 10)
+            group_layout.setContentsMargins(10, 15, 10, 10)
             group_layout.setSpacing(5)
             
             for reg in group.registers:

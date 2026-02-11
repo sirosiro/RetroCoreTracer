@@ -38,7 +38,7 @@ class CodeView(QWidget):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setShowGrid(False)
-        self.table.setStyleSheet("background-color: #101010; color: #BBBBBB; gridline-color: #303030;")
+        self.table.setStyleSheet("QTableWidget { background-color: #121212; color: #BBBBBB; gridline-color: #303030; } QHeaderView::section { background-color: #252525; color: #BBBBBB; }")
         
         self.layout.addWidget(self.table)
         
@@ -117,7 +117,7 @@ class CodeView(QWidget):
 
         # ハイライトの更新
         bg_color_highlight = QColor("#404000") # Dark Yellow
-        bg_color_normal = QColor("#101010")    # Default Background
+        bg_color_normal = QColor("#121212")    # Default Background
         
         for row in range(self.table.rowCount()):
             # 行のアイテムを取得
