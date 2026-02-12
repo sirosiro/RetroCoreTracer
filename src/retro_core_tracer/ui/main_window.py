@@ -12,7 +12,7 @@ from PySide6.QtGui import QAction, QIcon, QCloseEvent
 
 from retro_core_tracer.config.loader import ConfigLoader
 from retro_core_tracer.config.builder import SystemBuilder
-from retro_core_tracer.loader.loader import IntelHexLoader, SRecordLoader, AssemblyLoader
+from retro_core_tracer.loader.loader import LoaderFactory
 from retro_core_tracer.debugger.debugger import Debugger, BreakpointCondition, BreakpointConditionType
 from retro_core_tracer.ui.register_view import RegisterView
 from retro_core_tracer.ui.flag_view import FlagView
@@ -293,8 +293,9 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Intel HEX File", "", "HEX Files (*.hex);;All Files (*)")
         if file_name:
             try:
-                loader = IntelHexLoader()
-                loader.load_intel_hex(file_name, self.bus)
+                # @intent:responsibility LoaderFactoryを使用してローダーを生成し、結合度を下げます。
+                loader = LoaderFactory.create_loader(file_name)
+                loader.load(file_name, self.bus)
                 # @intent:responsibility コードロード後にリセットを行い、ベクタを反映させます。
                 self.cpu.reset()
                 self.code_view.reset_cache()
@@ -310,8 +311,9 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Motorola S-Record File", "", "S-Record Files (*.s19 *.s28 *.s37 *.srec);;All Files (*)")
         if file_name:
             try:
-                loader = SRecordLoader()
-                loader.load_srecord(file_name, self.bus)
+                # @intent:responsibility LoaderFactoryを使用してローダーを生成し、結合度を下げます。
+                loader = LoaderFactory.create_loader(file_name)
+                loader.load(file_name, self.bus)
                 # @intent:responsibility コードロード後にリセットを行い、ベクタを反映させます。
                 self.cpu.reset()
                 self.code_view.reset_cache()
@@ -328,11 +330,14 @@ class MainWindow(QMainWindow):
         if file_name:
             try:
                 arch = self.config.architecture if self.config else "Z80"
-                loader = AssemblyLoader()
-                symbol_map = loader.load_assembly(file_name, self.bus, architecture=arch)
-                self.cpu.set_symbol_map(symbol_map)
-                self.code_view.set_symbol_map(symbol_map)
-                self.breakpoint_view.set_symbol_map(symbol_map)
+                # @intent:responsibility LoaderFactoryを使用してローダーを生成します。
+                loader = LoaderFactory.create_loader(file_name)
+                symbol_map = loader.load(file_name, self.bus, architecture=arch)
+                
+                if symbol_map:
+                    self.cpu.set_symbol_map(symbol_map)
+                    self.code_view.set_symbol_map(symbol_map)
+                    self.breakpoint_view.set_symbol_map(symbol_map)
                 
                 # @intent:responsibility コードロード後にリセットを行い、ベクタを反映させます。
                 self.cpu.reset()

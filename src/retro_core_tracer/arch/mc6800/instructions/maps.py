@@ -11,9 +11,15 @@ DECODE_MAP = {
     # Load/Store
     0x86: load.decode_ldaa_imm,
     0x96: load.decode_ldaa_dir,
+    0xB6: load.decode_ldaa_ext, # Added
     0xC6: load.decode_ldab_imm,
+    0xD6: load.decode_ldab_dir, # Added
+    0xF6: load.decode_ldab_ext, # Added
     0xCE: load.decode_ldx_imm,
+    0x97: load.decode_staa_dir, # Added
     0xB7: load.decode_staa_ext,
+    0xD7: load.decode_stab_dir, # Added
+    0xF7: load.decode_stab_ext, # Added
     0x36: load.decode_psha,
     0x32: load.decode_pula,
     0x37: load.decode_pshb,
@@ -21,10 +27,18 @@ DECODE_MAP = {
     
     # ALU
     0x8B: alu.decode_adda_imm,
+    0x9B: alu.decode_adda_dir, # Added
+    0xBB: alu.decode_adda_ext, # Added
     0x84: alu.decode_anda_imm,
+    0x94: alu.decode_anda_dir, # Added
+    0xB4: alu.decode_anda_ext, # Added
     0x5C: alu.decode_incb,
     0x80: alu.decode_suba_imm,
+    0x90: alu.decode_suba_dir, # Added
+    0xB0: alu.decode_suba_ext, # Added
     0x81: alu.decode_cmpa_imm,
+    0x91: alu.decode_cmpa_dir, # Added
+    0xB1: alu.decode_cmpa_ext, # Added
     
     # Control
     0x20: control.decode_bra,
@@ -40,9 +54,15 @@ EXECUTE_MAP = {
     # Load/Store
     0x86: load.execute_ldaa_imm,
     0x96: load.execute_ldaa_dir,
+    0xB6: load.execute_ldaa_ext, # Added
     0xC6: load.execute_ldab_imm,
+    0xD6: load.execute_ldab_dir, # Added
+    0xF6: load.execute_ldab_ext, # Added
     0xCE: load.execute_ldx_imm,
+    0x97: load.execute_staa_dir, # Added
     0xB7: load.execute_staa_ext,
+    0xD7: load.execute_stab_dir, # Added
+    0xF7: load.execute_stab_ext, # Added
     0x36: load.execute_psha,
     0x32: load.execute_pula,
     0x37: load.execute_pshb,
@@ -50,10 +70,18 @@ EXECUTE_MAP = {
     
     # ALU
     0x8B: alu.execute_adda_imm,
+    0x9B: alu.execute_adda_dir, # Added
+    0xBB: alu.execute_adda_ext, # Added
     0x84: alu.execute_anda_imm,
+    0x94: alu.execute_anda_dir, # Added
+    0xB4: alu.execute_anda_ext, # Added
     0x5C: alu.execute_incb,
     0x80: alu.execute_suba_imm,
+    0x90: alu.execute_suba_dir, # Added
+    0xB0: alu.execute_suba_ext, # Added
     0x81: alu.execute_cmpa_imm,
+    0x91: alu.execute_cmpa_dir, # Added
+    0xB1: alu.execute_cmpa_ext, # Added
     
     # Control
     0x20: control.execute_bra,

@@ -13,7 +13,7 @@ def decode_ldaa_imm(opcode: int, bus: Bus, pc: int) -> Operation:
     val = bus.read((pc + 1) & 0xFFFF)
     return Operation("86", "LDAA", [f"#${val:02X}"], [val], 2, 2)
 
-# @intent:responsibility LDAA (Immediate) 命令を実行し、フラグ(N, Z, V)を更新します。
+# @intent:responsibility LDAA (Immediate) 命令を実行します。
 def execute_ldaa_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     val = op.operand_bytes[0]
     state.a = val
@@ -35,6 +35,22 @@ def execute_ldaa_dir(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     state.flag_z = (val == 0)
     state.flag_v = False
 
+# @intent:responsibility LDAA (Extended) 命令をデコードします。
+def decode_ldaa_ext(opcode: int, bus: Bus, pc: int) -> Operation:
+    b1 = bus.read((pc + 1) & 0xFFFF)
+    b2 = bus.read((pc + 2) & 0xFFFF)
+    addr = (b1 << 8) | b2
+    return Operation("B6", "LDAA", [f"${addr:04X}"], [b1, b2], 4, 3)
+
+# @intent:responsibility LDAA (Extended) 命令を実行します。
+def execute_ldaa_ext(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = (op.operand_bytes[0] << 8) | op.operand_bytes[1]
+    val = bus.read(addr)
+    state.a = val
+    state.flag_n = (val & 0x80) != 0
+    state.flag_z = (val == 0)
+    state.flag_v = False
+
 # --- LDAB ---
 # @intent:responsibility LDAB (Immediate) 命令をデコードします。
 def decode_ldab_imm(opcode: int, bus: Bus, pc: int) -> Operation:
@@ -44,6 +60,36 @@ def decode_ldab_imm(opcode: int, bus: Bus, pc: int) -> Operation:
 # @intent:responsibility LDAB (Immediate) 命令を実行します。
 def execute_ldab_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     val = op.operand_bytes[0]
+    state.b = val
+    state.flag_n = (val & 0x80) != 0
+    state.flag_z = (val == 0)
+    state.flag_v = False
+
+# @intent:responsibility LDAB (Direct) 命令をデコードします。
+def decode_ldab_dir(opcode: int, bus: Bus, pc: int) -> Operation:
+    addr = bus.read((pc + 1) & 0xFFFF)
+    return Operation("D6", "LDAB", [f"${addr:02X}"], [addr], 3, 2)
+
+# @intent:responsibility LDAB (Direct) 命令を実行します。
+def execute_ldab_dir(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = op.operand_bytes[0]
+    val = bus.read(addr)
+    state.b = val
+    state.flag_n = (val & 0x80) != 0
+    state.flag_z = (val == 0)
+    state.flag_v = False
+
+# @intent:responsibility LDAB (Extended) 命令をデコードします。
+def decode_ldab_ext(opcode: int, bus: Bus, pc: int) -> Operation:
+    b1 = bus.read((pc + 1) & 0xFFFF)
+    b2 = bus.read((pc + 2) & 0xFFFF)
+    addr = (b1 << 8) | b2
+    return Operation("F6", "LDAB", [f"${addr:04X}"], [b1, b2], 4, 3)
+
+# @intent:responsibility LDAB (Extended) 命令を実行します。
+def execute_ldab_ext(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = (op.operand_bytes[0] << 8) | op.operand_bytes[1]
+    val = bus.read(addr)
     state.b = val
     state.flag_n = (val & 0x80) != 0
     state.flag_z = (val == 0)
@@ -66,6 +112,19 @@ def execute_ldx_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     state.flag_v = False
 
 # --- STAA ---
+# @intent:responsibility STAA (Direct) 命令をデコードします。
+def decode_staa_dir(opcode: int, bus: Bus, pc: int) -> Operation:
+    addr = bus.read((pc + 1) & 0xFFFF)
+    return Operation("97", "STAA", [f"${addr:02X}"], [addr], 4, 2)
+
+# @intent:responsibility STAA (Direct) 命令を実行します。
+def execute_staa_dir(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = op.operand_bytes[0]
+    bus.write(addr, state.a)
+    state.flag_n = (state.a & 0x80) != 0
+    state.flag_z = (state.a == 0)
+    state.flag_v = False
+
 # @intent:responsibility STAA (Extended) 命令をデコードします。
 def decode_staa_ext(opcode: int, bus: Bus, pc: int) -> Operation:
     b1 = bus.read((pc + 1) & 0xFFFF)
@@ -79,6 +138,35 @@ def execute_staa_ext(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     bus.write(addr, state.a)
     state.flag_n = (state.a & 0x80) != 0
     state.flag_z = (state.a == 0)
+    state.flag_v = False
+
+# --- STAB ---
+# @intent:responsibility STAB (Direct) 命令をデコードします。
+def decode_stab_dir(opcode: int, bus: Bus, pc: int) -> Operation:
+    addr = bus.read((pc + 1) & 0xFFFF)
+    return Operation("D7", "STAB", [f"${addr:02X}"], [addr], 4, 2)
+
+# @intent:responsibility STAB (Direct) 命令を実行します。
+def execute_stab_dir(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = op.operand_bytes[0]
+    bus.write(addr, state.b)
+    state.flag_n = (state.b & 0x80) != 0
+    state.flag_z = (state.b == 0)
+    state.flag_v = False
+
+# @intent:responsibility STAB (Extended) 命令をデコードします。
+def decode_stab_ext(opcode: int, bus: Bus, pc: int) -> Operation:
+    b1 = bus.read((pc + 1) & 0xFFFF)
+    b2 = bus.read((pc + 2) & 0xFFFF)
+    addr = (b1 << 8) | b2
+    return Operation("F7", "STAB", [f"${addr:04X}"], [b1, b2], 5, 3)
+
+# @intent:responsibility STAB (Extended) 命令を実行します。
+def execute_stab_ext(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = (op.operand_bytes[0] << 8) | op.operand_bytes[1]
+    bus.write(addr, state.b)
+    state.flag_n = (state.b & 0x80) != 0
+    state.flag_z = (state.b == 0)
     state.flag_v = False
 
 # --- PSH/PUL ---

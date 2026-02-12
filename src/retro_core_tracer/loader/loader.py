@@ -4,15 +4,32 @@
 Intel HEX および Motorola S-Record 形式のロードをサポートします。
 """
 import re
-from typing import Dict, Tuple, List, Optional
+import os
+from abc import ABC, abstractmethod
+from typing import Dict, Tuple, List, Optional, Any
 
 from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.common.types import SymbolMap
 
-class IntelHexLoader:
+# @intent:responsibility 全てのローダーの共通インターフェースを定義します。
+class BaseLoader(ABC):
+    @abstractmethod
+    def load(self, file_path: str, bus: Bus, **kwargs) -> Optional[SymbolMap]:
+        """
+        ファイルをロードし、バスにデータを書き込みます。
+        シンボル情報がある場合は返します。
+        """
+        pass
+
+class IntelHexLoader(BaseLoader):
     """
     Intel HEX形式のファイルを解析し、データをバスにロードするローダー。
     """
+    # @intent:responsibility 共通インターフェースの実装。
+    def load(self, file_path: str, bus: Bus, **kwargs) -> Optional[SymbolMap]:
+        self.load_intel_hex(file_path, bus)
+        return None
+
     def load_intel_hex(self, file_path: str, bus: Bus) -> None:
         current_extended_linear_address = 0x0000
 
@@ -69,10 +86,15 @@ class IntelHexLoader:
                         raise e
                     raise ValueError(f"Error parsing Intel HEX line {line_num}: {line} - {e}")
 
-class SRecordLoader:
+class SRecordLoader(BaseLoader):
     """
     Motorola S-Record (S19, S28, S37) 形式のファイルを解析し、データをバスにロードするローダー。
     """
+    # @intent:responsibility 共通インターフェースの実装。
+    def load(self, file_path: str, bus: Bus, **kwargs) -> Optional[SymbolMap]:
+        self.load_srecord(file_path, bus)
+        return None
+
     def load_srecord(self, file_path: str, bus: Bus) -> None:
         with open(file_path, 'r') as f:
             for line_num, line in enumerate(f, 1):
@@ -109,11 +131,16 @@ class SRecordLoader:
                 except (ValueError, IndexError) as e:
                     raise ValueError(f"Error parsing S-Record line {line_num}: {e}")
 
-class AssemblyLoader:
+class AssemblyLoader(BaseLoader):
     """
     アセンブリソースコードを解析し、シンボル情報を抽出し、
     バイナリに変換してバスにロードする簡易ローダー。
     """
+    # @intent:responsibility 共通インターフェースの実装。アーキテクチャ指定を受け取ります。
+    def load(self, file_path: str, bus: Bus, **kwargs) -> Optional[SymbolMap]:
+        architecture = kwargs.get("architecture", "Z80")
+        return self.load_assembly(file_path, bus, architecture)
+
     def load_assembly(self, file_path: str, bus: Bus, architecture: str = "Z80") -> SymbolMap:
         symbol_map: SymbolMap = {}
         binary_data: List[Tuple[int, int]] = []
@@ -424,3 +451,17 @@ class AssemblyLoader:
     def _is_direct_heuristic(self, operand: str) -> bool:
         if operand.startswith('$') and len(operand) <= 3: return True
         return False
+
+# @intent:responsibility ファイル拡張子に基づいて適切なローダーを生成します。
+class LoaderFactory:
+    @staticmethod
+    def create_loader(file_path: str) -> BaseLoader:
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in ['.hex']:
+            return IntelHexLoader()
+        elif ext in ['.s19', '.s28', '.s37', '.srec']:
+            return SRecordLoader()
+        elif ext in ['.asm']:
+            return AssemblyLoader()
+        else:
+            raise ValueError(f"Unsupported file extension: {ext}")

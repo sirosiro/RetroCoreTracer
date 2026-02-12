@@ -33,7 +33,7 @@ def decode_adda_imm(opcode: int, bus: Bus, pc: int) -> Operation:
     val = bus.read((pc + 1) & 0xFFFF)
     return Operation("8B", "ADDA", [f"#${val:02X}"], [val], 2, 2)
 
-# @intent:responsibility ADDA (Immediate) 命令を実行し、結果をAレジスタに格納し、フラグを更新します。
+# @intent:responsibility ADDA (Immediate) 命令を実行します。
 def execute_adda_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     imm_val = op.operand_bytes[0]
     v1 = state.a
@@ -41,13 +41,43 @@ def execute_adda_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     state.a = res & 0xFF
     update_flags_add8(state, v1, imm_val, res)
 
+# @intent:responsibility ADDA (Direct) 命令をデコードします。
+def decode_adda_dir(opcode: int, bus: Bus, pc: int) -> Operation:
+    addr = bus.read((pc + 1) & 0xFFFF)
+    return Operation("9B", "ADDA", [f"${addr:02X}"], [addr], 3, 2)
+
+# @intent:responsibility ADDA (Direct) 命令を実行します。
+def execute_adda_dir(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = op.operand_bytes[0]
+    val = bus.read(addr)
+    v1 = state.a
+    res = v1 + val
+    state.a = res & 0xFF
+    update_flags_add8(state, v1, val, res)
+
+# @intent:responsibility ADDA (Extended) 命令をデコードします。
+def decode_adda_ext(opcode: int, bus: Bus, pc: int) -> Operation:
+    b1 = bus.read((pc + 1) & 0xFFFF)
+    b2 = bus.read((pc + 2) & 0xFFFF)
+    addr = (b1 << 8) | b2
+    return Operation("BB", "ADDA", [f"${addr:04X}"], [b1, b2], 4, 3)
+
+# @intent:responsibility ADDA (Extended) 命令を実行します。
+def execute_adda_ext(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = (op.operand_bytes[0] << 8) | op.operand_bytes[1]
+    val = bus.read(addr)
+    v1 = state.a
+    res = v1 + val
+    state.a = res & 0xFF
+    update_flags_add8(state, v1, val, res)
+
 # --- SUBA ---
 # @intent:responsibility SUBA (Immediate) 命令をデコードします。
 def decode_suba_imm(opcode: int, bus: Bus, pc: int) -> Operation:
     val = bus.read((pc + 1) & 0xFFFF)
     return Operation("80", "SUBA", [f"#${val:02X}"], [val], 2, 2)
 
-# @intent:responsibility SUBA (Immediate) 命令を実行し、結果をAレジスタに格納し、フラグを更新します。
+# @intent:responsibility SUBA (Immediate) 命令を実行します。
 def execute_suba_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     imm_val = op.operand_bytes[0]
     v1 = state.a
@@ -55,13 +85,43 @@ def execute_suba_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     state.a = res & 0xFF
     update_flags_sub8(state, v1, imm_val, res)
 
+# @intent:responsibility SUBA (Direct) 命令をデコードします。
+def decode_suba_dir(opcode: int, bus: Bus, pc: int) -> Operation:
+    addr = bus.read((pc + 1) & 0xFFFF)
+    return Operation("90", "SUBA", [f"${addr:02X}"], [addr], 3, 2)
+
+# @intent:responsibility SUBA (Direct) 命令を実行します。
+def execute_suba_dir(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = op.operand_bytes[0]
+    val = bus.read(addr)
+    v1 = state.a
+    res = v1 - val
+    state.a = res & 0xFF
+    update_flags_sub8(state, v1, val, res)
+
+# @intent:responsibility SUBA (Extended) 命令をデコードします。
+def decode_suba_ext(opcode: int, bus: Bus, pc: int) -> Operation:
+    b1 = bus.read((pc + 1) & 0xFFFF)
+    b2 = bus.read((pc + 2) & 0xFFFF)
+    addr = (b1 << 8) | b2
+    return Operation("B0", "SUBA", [f"${addr:04X}"], [b1, b2], 4, 3)
+
+# @intent:responsibility SUBA (Extended) 命令を実行します。
+def execute_suba_ext(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = (op.operand_bytes[0] << 8) | op.operand_bytes[1]
+    val = bus.read(addr)
+    v1 = state.a
+    res = v1 - val
+    state.a = res & 0xFF
+    update_flags_sub8(state, v1, val, res)
+
 # --- CMPA ---
 # @intent:responsibility CMPA (Immediate) 命令をデコードします。
 def decode_cmpa_imm(opcode: int, bus: Bus, pc: int) -> Operation:
     val = bus.read((pc + 1) & 0xFFFF)
     return Operation("81", "CMPA", [f"#${val:02X}"], [val], 2, 2)
 
-# @intent:responsibility CMPA (Immediate) 命令を実行し、減算結果（保存しない）に基づいてフラグを更新します。
+# @intent:responsibility CMPA (Immediate) 命令を実行します。
 def execute_cmpa_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     imm_val = op.operand_bytes[0]
     v1 = state.a
@@ -69,16 +129,72 @@ def execute_cmpa_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     # Result is NOT stored
     update_flags_sub8(state, v1, imm_val, res)
 
+# @intent:responsibility CMPA (Direct) 命令をデコードします。
+def decode_cmpa_dir(opcode: int, bus: Bus, pc: int) -> Operation:
+    addr = bus.read((pc + 1) & 0xFFFF)
+    return Operation("91", "CMPA", [f"${addr:02X}"], [addr], 3, 2)
+
+# @intent:responsibility CMPA (Direct) 命令を実行します。
+def execute_cmpa_dir(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = op.operand_bytes[0]
+    val = bus.read(addr)
+    v1 = state.a
+    res = v1 - val
+    update_flags_sub8(state, v1, val, res)
+
+# @intent:responsibility CMPA (Extended) 命令をデコードします。
+def decode_cmpa_ext(opcode: int, bus: Bus, pc: int) -> Operation:
+    b1 = bus.read((pc + 1) & 0xFFFF)
+    b2 = bus.read((pc + 2) & 0xFFFF)
+    addr = (b1 << 8) | b2
+    return Operation("B1", "CMPA", [f"${addr:04X}"], [b1, b2], 4, 3)
+
+# @intent:responsibility CMPA (Extended) 命令を実行します。
+def execute_cmpa_ext(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = (op.operand_bytes[0] << 8) | op.operand_bytes[1]
+    val = bus.read(addr)
+    v1 = state.a
+    res = v1 - val
+    update_flags_sub8(state, v1, val, res)
+
 # --- ANDA ---
 # @intent:responsibility ANDA (Immediate) 命令をデコードします。
 def decode_anda_imm(opcode: int, bus: Bus, pc: int) -> Operation:
     val = bus.read((pc + 1) & 0xFFFF)
     return Operation("84", "ANDA", [f"#${val:02X}"], [val], 2, 2)
 
-# @intent:responsibility ANDA (Immediate) 命令を実行し、結果をAレジスタに格納し、フラグを更新します。
+# @intent:responsibility ANDA (Immediate) 命令を実行します。
 def execute_anda_imm(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
     imm_val = op.operand_bytes[0]
     res = state.a & imm_val
+    state.a = res
+    update_flags_logic8(state, res)
+
+# @intent:responsibility ANDA (Direct) 命令をデコードします。
+def decode_anda_dir(opcode: int, bus: Bus, pc: int) -> Operation:
+    addr = bus.read((pc + 1) & 0xFFFF)
+    return Operation("94", "ANDA", [f"${addr:02X}"], [addr], 3, 2)
+
+# @intent:responsibility ANDA (Direct) 命令を実行します。
+def execute_anda_dir(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = op.operand_bytes[0]
+    val = bus.read(addr)
+    res = state.a & val
+    state.a = res
+    update_flags_logic8(state, res)
+
+# @intent:responsibility ANDA (Extended) 命令をデコードします。
+def decode_anda_ext(opcode: int, bus: Bus, pc: int) -> Operation:
+    b1 = bus.read((pc + 1) & 0xFFFF)
+    b2 = bus.read((pc + 2) & 0xFFFF)
+    addr = (b1 << 8) | b2
+    return Operation("B4", "ANDA", [f"${addr:04X}"], [b1, b2], 4, 3)
+
+# @intent:responsibility ANDA (Extended) 命令を実行します。
+def execute_anda_ext(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    addr = (op.operand_bytes[0] << 8) | op.operand_bytes[1]
+    val = bus.read(addr)
+    res = state.a & val
     state.a = res
     update_flags_logic8(state, res)
 
