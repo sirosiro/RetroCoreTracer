@@ -233,6 +233,7 @@ def execute_c9(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
     state.pc = (high << 8) | low
 
 def execute_00(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    # Intentional: NOP (No Operation)
     pass
 
 def execute_76(state: Z80CpuState, bus: Bus, operation: Operation) -> None:

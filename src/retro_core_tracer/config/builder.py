@@ -1,24 +1,31 @@
 from typing import Tuple
-from retro_core_tracer.transport.bus import Bus, RAM
+from retro_core_tracer.transport.bus import Bus, RAM, ROM
 from retro_core_tracer.core.cpu import AbstractCpu
 from retro_core_tracer.arch.z80.cpu import Z80Cpu
 from retro_core_tracer.arch.mc6800.cpu import Mc6800Cpu
 from .models import SystemConfig
 
+# @intent:responsibility システム構成（Config）に基づいて、Bus、Device、CPUを生成・接続し、初期状態を適用します。
 class SystemBuilder:
     def build_system(self, config: SystemConfig) -> Tuple[AbstractCpu, Bus]:
         bus = Bus()
         
         for region in config.memory_map:
             size = region.end - region.start + 1
-            if region.type == "RAM" or region.type == "ROM":
-                # Currently ROM is treated as RAM (writable for loading)
-                # Future: Implement actual ReadOnlyMemory device
+            device = None
+            
+            if region.type == "RAM":
                 device = RAM(size)
-                bus.register_device(region.start, region.end, device)
+            elif region.type == "ROM":
+                # @intent:feature ROMデバイスを使用します。
+                device = ROM(size)
             else:
-                # Placeholder for other device types
-                print(f"Warning: Unknown device type '{region.type}' for range {region.start:04X}-{region.end:04X}")
+                # Fallback / Placeholder for other device types
+                print(f"Warning: Unknown device type '{region.type}' for range {region.start:04X}-{region.end:04X}, defaulting to RAM")
+                device = RAM(size)
+            
+            if device:
+                bus.register_device(region.start, region.end, device)
         
         if config.architecture == "Z80":
             cpu = Z80Cpu(bus)

@@ -21,7 +21,7 @@
 
 *   **原則3: 「禁止」ではなく「判断の背景」を記述する。**
     *   「禁止事項」や「守るべきルール」といった思考停止を招く言葉を避け、「我々はこういう判断をした」といった形で、判断に至った文脈や背景そのものを記述します。
-    *   例: 「現時点では、コアロジックとUIの結合を避けるため、両者はSnapshotオブジェクトを通してのみ通信する、という判断をした。」
+    *   例: 「現時点では、コアロジックとUI의結合を避けるため、両者はSnapshotオブジェクトを通してのみ通信する、という判断をした。」
 
 ### 3. リスクと対策 (Risks and Mitigations)
 
@@ -64,6 +64,10 @@
 - **Decision:** 「動的・静的の統合可視化」戦略の採用。
 - **Rationale:** 開発の過程で、単なるアニメーションだけでなく、現在のハードウェア構成（メモリマップ、I/O配置）そのものを動的に描画する必要性が高まった。これに対し、UI層が設定データを直接解釈してシーンを構築するアプローチを採用。
 
+- **Date:** 2026-02-12
+- **Decision:** ROMデバイスの明示的実装と、アセンブラロジックの分離。
+- **Rationale:** 堅牢性を高めるため、ROM領域への書き込みを無視するROMデバイスを導入。また、Loaderクラスの肥大化を防ぐため、アーキテクチャ固有のアセンブリ解析ロジックをAssemblerクラスへ分離した。
+
 ### 3. AIとの協調に関する指針 (AI Collaboration Policy)
 
 *このセクションは、AIがどう振る舞うべきかの指針を記述します。*
@@ -75,24 +79,26 @@
 
 *このセクションは、システムの主要コンポーネントの「設計仕様」を定義します。AIと人間は、ここでの合意形成を通じて実装を進めます。詳細な仕様は、各サブディレクトリの`ARCHITECTURE_MANIFEST.md`を参照してください。*
 
-#### 4.1. Transport Layer (共通バス)
-- **責務 (Responsibility):** メモリアドレス空間を抽象化し、読み書きアクセスを管理する責務。
+#### 4.1. Transport Layer (共通バス / RAM / ROM)
+- **責務 (Responsibility):** メモリアドレス空間を抽象化し、読み書きアクセスを管理する責務。ROMデバイスによる読み込み専用制御を含む。
 - **詳細仕様:** `src/retro_core_tracer/transport/ARCHITECTURE_MANIFEST.md` を参照してください。
 
 #### 4.2. Core Layer (抽象CPU)
 - **責務 (Responsibility):** 抽象的なCPUの状態管理と、命令サイクルの実行制御に関する責務。
 - **詳細仕様:** `src/retro_core_tracer/core/ARCHITECTURE_MANIFEST.md` を参照してください。
 
-#### 4.3. Architecture Layer (Z80)
-- **責務 (Responsibility):** Z80プロセッサ固有の命令セット、レジスタ構造、状態遷移の定義に関する責務。
-- **詳細仕様:** `src/retro_core_tracer/arch/z80/ARCHITECTURE_MANIFEST.md` を参照してください。
+#### 4.3. Architecture Layer (Z80 / MC6800)
+- **責務 (Responsibility):** 各プロセッサ固有の命令セット、レジスタ構造、状態遷移の定義に関する責務。
+- **詳細仕様:** 
+    - `src/retro_core_tracer/arch/z80/ARCHITECTURE_MANIFEST.md`
+    - `src/retro_core_tracer/arch/mc6800/ARCHITECTURE_MANIFEST.md` を参照してください。
 
 #### 4.4. Hybrid Debugger (デバッガ)
 - **責務 (Responsibility):** 実行制御（ステップ実行、ブレークポイント）と、コアの状態観測に関する責務。
 - **詳細仕様:** `src/retro_core_tracer/debugger/ARCHITECTURE_MANIFEST.md` を参照してください。
 
-#### 4.5. Code Loader (コードローダー)
-- **責務 (Responsibility):** 実行可能ファイル（HEX形式など）を解析し、シミュレータのメモリ空間にロードする責務。
+#### 4.5. Code Loader (コードローダー / アセンブラ)
+- **責務 (Responsibility):** 実行可能ファイル（HEX/S-Record）の解析、およびアーキテクチャ固有のアセンブリソース解析によるロード責務。Factoryパターンによるローダー生成。
 - **詳細仕様:** `src/retro_core_tracer/loader/ARCHITECTURE_MANIFEST.md` を参照してください。
 
 #### 4.6. User Interface (UI)

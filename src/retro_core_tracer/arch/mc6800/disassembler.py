@@ -22,7 +22,7 @@ class PeekBus:
     def read(self, address: int) -> int:
         return self._bus.peek(address)
 
-    def write(self, address: int, data: int) -> None:
+        # Intentional: Disassembler should not modify memory state via bus writes.
         pass
 
 # @intent:responsibility 指定されたメモリ範囲を逆アセンブルし、表示用データを生成します。

@@ -95,4 +95,5 @@ def decode_nop(opcode: int, bus: Bus, pc: int) -> Operation:
 
 # @intent:responsibility NOP命令を実行します（何もしません）。
 def execute_nop(state: Mc6800CpuState, bus: Bus, op: Operation) -> None:
+    # Intentional: NOP (No Operation)
     pass
