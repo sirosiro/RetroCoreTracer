@@ -30,6 +30,18 @@ class AbstractCpu(ABC):
         # @intent:rationale Stateオブジェクトの直接操作を避けるため、protectedな命名規則を採用。
         #                  外部からのアクセスは`get_state()`メソッドを介して行う。
 
+    # @intent:responsibility I/O空間（Port I/O）をサポートするかどうかを返します。
+    # @intent:rationale UI層などがアーキテクチャ名（文字列）に依存せず、機能ベースでレイアウトを決定できるようにします。
+    @property
+    @abstractmethod
+    def has_io_port(self) -> bool:
+        """
+        このCPUが独立したI/O空間（ポート入出力）をサポートしているか返します。
+        Trueの場合、UIはI/Oマップやバスを表示すべきです。
+        """
+        # Intentional: Abstract property, must be implemented by subclasses.
+        pass
+
     # @intent:responsibility シンボルマップを設定します。
     def set_symbol_map(self, symbol_map: SymbolMap) -> None:
         """
@@ -171,4 +183,3 @@ class AbstractCpu(ABC):
         指定されたメモリ範囲を逆アセンブルし、(address, hex_bytes, mnemonic) のタプルリストを返す。
         """
         pass
-

@@ -101,19 +101,18 @@ class CoreCanvas(QGraphicsView):
         # 動的に計算されるパス情報
         self._mem_path_points: List[QPointF] = []
         self._io_path_points: List[QPointF] = []
-        self._is_pmio_arch = True # デフォルトはZ80等の分離型を想定
+        self._has_io_port = False
 
         self._setup_static_scene()
 
     def set_cpu(self, cpu: AbstractCpu):
         self._cpu = cpu
+        # @intent:rationale CPUオブジェクトからI/Oポート機能の有無を取得します。
+        self._has_io_port = cpu.has_io_port
         self._setup_static_scene()
 
     def set_config(self, config: SystemConfig):
         self._config = config
-        # アーキテクチャに基づいてI/O空間の有無を判定
-        # @intent:rationale Z80等の分離I/O空間(PMIO)を持つアーキテクチャのみIOブロックを表示します。
-        self._is_pmio_arch = (config.architecture.upper() == "Z80")
         self._setup_static_scene()
 
     def set_zoom(self, scale_factor: float):
@@ -190,7 +189,7 @@ class CoreCanvas(QGraphicsView):
         self._draw_path(self._mem_path_points, QColor(COLOR_BUS_MEM))
 
         # --- IO Map (Conditional) ---
-        if self._is_pmio_arch:
+        if self._has_io_port:
             ix, iy, iw, ih = self.IO_AREA
             self.scene.addRect(ix, iy, iw, ih, QPen(QColor("#444"), 1), QBrush(QColor("#111")))
             io_title = self.scene.addSimpleText("I/O Ports", font_title)
@@ -244,7 +243,7 @@ class CoreCanvas(QGraphicsView):
         # 経路の選択
         # @intent:rationale 独立I/O空間(PMIO)をサポートする場合のみI/Oパスを使用します。
         is_io_access = access.access_type in (BusAccessType.IO_READ, BusAccessType.IO_WRITE)
-        use_io_path = is_io_access and self._is_pmio_arch
+        use_io_path = is_io_access and self._has_io_port
         
         base_path = self._io_path_points if use_io_path else self._mem_path_points
         

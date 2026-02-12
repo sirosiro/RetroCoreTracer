@@ -100,8 +100,7 @@ class ROM(RAM):
     def write(self, address: int, data: int) -> None:
         if not 0 <= address < self._size:
             raise IndexError(f"Address {address} out of bounds for ROM of size {self._size}.")
-        # ROMへの書き込みは無視するが、デバッグ用に警告を出す
-        # warnings.warn(f"Attempted write to ROM at offset {address:04X} with data {data:02X}")
+        # Intentional: ROM writes are ignored as per hardware behavior.
         pass
 
     # @intent:responsibility ROMの内容を初期化するためのバックドアメソッドです。

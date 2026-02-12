@@ -60,6 +60,11 @@
 - **Consequences:** Core LayerとInstruction Layer間のインターフェース設計が重要になる。
 -->
 
+- **Date:** 2026-02-12
+- **Core Principle:** コアロジックは、特定のUI技術から完全に分離される。
+- **Decision:** `AbstractCpu` に `has_io_port` プロパティを追加し、UIがアーキテクチャ名（文字列）に依存せずにI/O表示を切り替えられるようにする。
+- **Rationale:** `CoreCanvas` 等のUIコンポーネントが "Z80" という具体的な文字列を知っている状態（密結合）を解消するため。機能ベースのインターフェースにより、将来のアーキテクチャ追加にも柔軟に対応できる。
+
 ### 3. AIとの協調に関する指針 (AI Collaboration Policy)
 
 *このセクションは、AIがどう振る舞うべきかの指針を記述します。*
@@ -119,6 +124,9 @@
     - `__init__(self, bus: Bus)`:
         - **責務:** `AbstractCpu`インスタンスを初期化し、システムバスへの参照と初期`CpuState`を設定する。
         - **引数:** `bus` (Bus) - システムの共通バスインスタンス。
+    - `has_io_port(self) -> bool`:
+        - **責務:** このCPUが独立したI/O空間（ポート入出力）をサポートしているか返す。
+        - **用途:** UIがI/Oマップやバスを表示すべきかを判断するために使用。
     - `set_symbol_map(self, symbol_map: Dict[str, int]) -> None`:
         - **責務:** シンボルマップを設定し、アドレスからの逆引きマップを内部的に構築する。
     - `reset(self) -> None`:

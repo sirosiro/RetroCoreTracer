@@ -1,4 +1,4 @@
-# ARCHITECTURE MANIFEST - Retro Core Tracer (UI Layer)
+# src/retro_core_tracer/ui/ARCHITECTURE_MANIFEST.md
 
 ---
 ## Part 1: このマニフェストの取扱説明書 (Guide)
@@ -31,7 +31,7 @@
 ### 1. 核となる原則 (Core Principles)
 
 - **原則: UIは特定のCPUアーキテクチャの実装詳細を知ってはならない。**
-  - **理由:** マルチアーキテクチャ対応を容易にし、CPUの追加時にUIコードの修正を不要にするため。UIは `AbstractCpu` が提供するメタデータ（レイアウト、レジスタマップ、フラグ状態）のみに基づいて描画を行う。
+  - **理由:** マルチアーキテクチャ対応を容易にし、CPUの追加時にUIコードの修正を不要にするため。UIは `AbstractCpu` が提供するメタデータ（レイアウト、レジスタマップ、フラグ状態、`has_io_port` フラグ）のみに基づいて描画を行う。
 
 - **原則: UIコンポーネントは、統一された初期化・更新インターフェースを持つ。**
   - **理由:** `MainWindow` が各ビューを一貫した方法で管理（Dependency Injectionおよび描画更新）できるようにし、結合度を下げるため。具体的には `set_context` (または `set_cpu`/`set_bus`) と `update_view` パターンを採用する。
@@ -62,6 +62,7 @@
     - CPUの内部構造、バス（アドレス/データ）、メモリ、IOをグラフィカルに描画する。
     - `SystemConfig` に基づき、メモリマップとIOマップを静的に描画する。
     - `Snapshot` に記録された `bus_activity` を解析し、バス配線に沿ったアニメーションを再生する。
+    - **アーキテクチャ対応:** `cpu.has_io_port` プロパティを参照し、I/Oポート表示の有無を動的に切り替える。
 - **提供するAPI:**
     - `set_cpu(cpu: AbstractCpu)`
     - `set_config(config: SystemConfig)`

@@ -22,6 +22,11 @@ class TestCpu(AbstractCpu):
         self._mock_opcode = 0x00 
         self._decoded_operation = Operation(opcode_hex="00", mnemonic="NOP")
 
+    # @intent:responsibility I/O空間のサポート有無を返します。テスト用はFalse固定。
+    @property
+    def has_io_port(self) -> bool:
+        return False
+
     def _create_initial_state(self) -> CpuState:
         return CpuState(pc=self._initial_pc, sp=self._initial_sp)
 

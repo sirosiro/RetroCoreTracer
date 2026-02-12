@@ -21,6 +21,11 @@ class Mc6800Cpu(AbstractCpu):
         super().__init__(bus)
         self._use_reset_vector = False
 
+    # @intent:responsibility I/O空間（Port I/O）のサポートを宣言します。MC6800はMMIOを使用するため、Port I/Oはサポートしません。
+    @property
+    def has_io_port(self) -> bool:
+        return False
+
     # @intent:responsibility リセットベクトルを使用するかどうかを設定します。
     def set_use_reset_vector(self, use: bool) -> None:
         self._use_reset_vector = use

@@ -25,6 +25,11 @@ class Z80Cpu(AbstractCpu):
     def __init__(self, bus: Bus):
         super().__init__(bus)
 
+    # @intent:responsibility I/O空間（Port I/O）のサポートを宣言します。Z80は独立したI/O空間を持ちます。
+    @property
+    def has_io_port(self) -> bool:
+        return True
+
     # @intent:responsibility Z80 CPUの初期状態（Z80CpuState）を生成します。
     def _create_initial_state(self) -> Z80CpuState:
         # Z80のリセット時の初期値は通常0だが、エミュレータによっては異なる設定も可能。
