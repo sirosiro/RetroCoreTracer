@@ -66,3 +66,4 @@
 - **ビッグエンディアン対応:**
     - `_read_word(addr)`: `(bus.read(addr) << 8) | bus.read(addr+1)`
     - `_write_word(addr, val)`: `bus.write(addr, val >> 8); bus.write(addr+1, val & 0xFF)`
+    - **`step` メソッド:** `AbstractCpu` のTemplate Methodを使用。デフォルトのPC更新（命令長分加算）に従う。

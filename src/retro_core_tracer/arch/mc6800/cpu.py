@@ -65,35 +65,7 @@ class Mc6800Cpu(AbstractCpu):
     def _execute(self, operation: Operation) -> None:
         execute_instruction(operation, self._state, self._bus)
 
-    # @intent:responsibility 1命令サイクルを実行し、その結果のスナップショットを生成して返します。
-    # @intent:flow フェッチ -> デコード -> PC更新 -> 実行 -> スナップショット生成 の順序で処理を行います。
-    def step(self) -> Snapshot:
-        initial_pc = self._state.pc
-        self._bus.get_and_clear_activity_log()
 
-        opcode = self._fetch()
-        operation = self._decode(opcode)
-        
-        # MC6800では命令実行前にPCを次の命令へ進めるのが一般的
-        self._state.pc = (self._state.pc + operation.length) & 0xFFFF
-        
-        self._execute(operation)
-        
-        bus_activity = self._bus.get_and_clear_activity_log()
-        self._cycle_count += operation.cycle_count
-
-        symbol_label = self._reverse_symbol_map.get(initial_pc, "")
-        symbol_info = f"{symbol_label}: " if symbol_label else ""
-        symbol_info += f"{operation.mnemonic}"
-        if operation.operands:
-            symbol_info += " " + ", ".join(operation.operands)
-
-        return Snapshot(
-            state=self.get_state(),
-            operation=operation,
-            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=symbol_info),
-            bus_activity=bus_activity
-        )
 
     # @intent:responsibility UI表示用に、現在のレジスタ値を辞書形式で提供します。
     def get_register_map(self) -> Dict[str, int]:

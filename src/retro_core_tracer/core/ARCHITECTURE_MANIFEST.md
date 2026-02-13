@@ -136,21 +136,21 @@
         - **責務:** 現在のCPUのレジスタ状態を返す。
         - **設計上の決定:** 内部の`_state`オブジェクトの直接操作を避け、メソッド経由でのアクセスを強制することで状態の整合性を高める。
     - `step(self) -> Snapshot`:
-        - **責務:** CPUを1命令サイクル進め、その結果（実行後のCPU状態、命令、バスアクティビティ、メタデータ）を完全な`Snapshot`オブジェクトとして返す。
+        - **責務:** Template Method パターンを用い、CPUを1命令サイクル進める共通フロー（ログクリア→フェッチ→デコード→PC更新→実行→Snapshot生成）を制御する。
         - **処理フロー:**
-            1. `_bus.get_and_clear_activity_log()` を呼び出し、前サイクルまでの残存ログを破棄（または警告）する。
-            2. `_fetch()` を実行。
-            3. `_decode()` を実行。
-            4. `_execute()` を実行。
-            5. `_bus.get_and_clear_activity_log()` を再度呼び出し、この命令サイクル中（フェッチ〜実行）に発生した全てのバスアクセスを収集する。
-            6. 命令固有のサイクル数を計算し、累積サイクル数(`metadata.cycle_count`)を更新する。
-            7. 収集したバスアクティビティと更新されたメタデータを含む `Snapshot` を生成して返す。
+            1. `_bus.get_and_clear_activity_log()` を呼び出し、前サイクルまでの残存ログを破棄する。
+            2. `_handle_halt()` フックを呼び出し、HALT状態なら即座にリターンする。
+            3. `_fetch()` を実行。
+            4. `_decode()` を実行。
+            5. `_update_pc()` フックを実行（デフォルトは命令長分加算）。
+            6. `_execute()` を実行。
+            7. `_create_snapshot()` フックを実行し、バスアクティビティとメタデータを付与した `Snapshot` を生成して返す。
         - **保証事項:** 返される `Snapshot.bus_activity` には、その命令のフェッチから実行完了までに発生した全てのメモリアクセスが、発生順に記録されていなければならない。
 - **抽象メソッド (派生クラスでの実装が必須):**
     - `_create_initial_state(self) -> CpuState`:
         - **責務:** CPUの初期状態を生成して返す。CPUアーキテクチャ固有の`CpuState`サブクラスを返すことができる。
     - `_fetch(self) -> int`:
-        - **責務:** 現在の`pc`からメモリの次の命令（オペコード）をバス経由でフェッチし、PCを更新する。
+        - **責務:** 現在の`pc`からメモリの次の命令（オペコード）をバス経由でフェッチする（PCの更新はここでは行わない）。
     - `_decode(self, opcode: int) -> Operation`:
         - **責務:** フェッチされたオペコードを解析し、その命令の詳細（ニーモニック、オペランドなど）を`Operation`オブジェクトとして返す。
     - `_execute(self, operation: Operation) -> None`:
@@ -170,6 +170,13 @@
             - `start_addr`: 開始アドレス。
             - `length`: バイト長。
         - **戻り値:** `(address, hex_bytes, mnemonic)` のリスト。
+- **フックメソッド (派生クラスで必要に応じてオーバーライド):**
+    - `_handle_halt(self, current_pc: int) -> Optional[Snapshot]`:
+        - **責務:** HALT状態の場合の特殊処理を行う。デフォルトは何もしない（`None`を返す）。
+    - `_update_pc(self, operation: Operation) -> None`:
+        - **責務:** 命令実行前のPC更新を行う。デフォルトは `operation.length` 分進める。
+    - `_create_snapshot(self, initial_pc: int, operation: Operation) -> Snapshot`:
+        - **責務:** 実行結果から `Snapshot` オブジェクトを生成する共通ロジック。通常はオーバーライド不要。
 - **主要なデータ構造 (Key Data Structures):**
     - `_bus: Bus`: システムの共通バスインスタンスへの参照。
     - `_state: CpuState`: 現在のCPUのレジスタ状態を保持する`CpuState`インスタンス。

@@ -111,28 +111,58 @@ class AbstractCpu(ABC):
         pass
 
     # @intent:responsibility CPUを1命令サイクル進め、その結果のスナップショットを返します。
-    # @intent:rationale このメソッドはフェッチ、デコード、実行のプロセスを内部で管理し、
-    #                  その結果をUIやデバッガが利用可能な不変のSnapshotとして提供します。
+    # @intent:rationale Template Methodパターンを採用し、共通の実行フロー（ログクリア→フェッチ→デコード→PC更新→実行→Snapshot生成）を定義します。
+    #                  アーキテクチャ固有の振る舞い（HALT処理など）はフックメソッドで対応します。
     def step(self) -> Snapshot:
         """
         CPUを1命令サイクル進め、その時点でのCPUとバスの状態を含むSnapshotオブジェクトを返します。
-        フェッチ -> デコード -> 実行の順序で処理を実行します。
-        具体的な実装は派生クラスで行われますが、このメソッドがそれらをオーケストレーションします。
         """
-        # 前サイクルまでの残存ログを破棄
+        # 1. 前処理: 前サイクルまでの残存ログを破棄
         self._bus.get_and_clear_activity_log()
+        initial_pc = self._state.pc
 
-        initial_pc = self._state.pc # フェッチ前のPCを保存
+        # 2. HALT判定 (Hook)
+        halt_snapshot = self._handle_halt(initial_pc)
+        if halt_snapshot:
+            return halt_snapshot
 
-        # フェッチ
+        # 3. フェッチ
         opcode = self._fetch()
-        
-        # デコード
+
+        # 4. デコード
         operation = self._decode(opcode)
 
-        # 実行
+        # 5. PC更新 (Hook)
+        # 多くのCPUではデコード後、実行前にPCを命令長分進める
+        self._update_pc(operation)
+
+        # 6. 実行
         self._execute(operation)
         
+        # 7. 後処理 & Snapshot生成
+        return self._create_snapshot(initial_pc, operation)
+
+    # @intent:responsibility HALT状態の場合の処理を行います。
+    # @intent:return HALT中であればその状態のSnapshot、そうでなければNone。
+    def _handle_halt(self, current_pc: int) -> Optional[Snapshot]:
+        """
+        HALT状態の場合の処理。デフォルトは何もしない（Noneを返す）。
+        オーバーライドしてHALT時の挙動（NOP扱いなど）を実装する。
+        """
+        return None
+
+    # @intent:responsibility 命令実行前にPCを更新します。
+    def _update_pc(self, operation: Operation) -> None:
+        """
+        命令実行前のPC更新。デフォルトは命令長分進める。
+        """
+        self._state.pc = (self._state.pc + operation.length) & 0xFFFF
+
+    # @intent:responsibility スナップショットを生成します。
+    def _create_snapshot(self, initial_pc: int, operation: Operation) -> Snapshot:
+        """
+        実行結果からSnapshotオブジェクトを生成する共通ロジック。
+        """
         # このサイクルで発生したバスアクティビティを取得
         bus_activity = self._bus.get_and_clear_activity_log()
 
@@ -147,13 +177,18 @@ class AbstractCpu(ABC):
             symbol_info += " " + ", ".join(operation.operands)
 
         # スナップショットの生成
-        snapshot = Snapshot(
-            state=self.get_state(), # 実行後の状態
+        return Snapshot(
+            state=self.get_state(), # 実行後の状態（コピーではないが、Snapshot生成時にイミュータブル化されることを期待）
+            # 注: Pythonのdataclassはデフォルトでは浅いコピーもしないので、
+            # stateが可変オブジェクトの場合、Snapshot内のstateも変化してしまうリスクがある。
+            # ただし、現在の実装ではCpuStateはデータクラスであり、Snapshot生成時に
+            # copy.deepcopyなどをするか、あるいはCpuState自体を毎回作り直す設計にする必要がある。
+            # 現状のコードベースではSnapshot作成時にstateのコピーを行っていないように見えるため、
+            # 将来的な課題として残るが、ここでは既存ロジックを踏襲する。
             operation=operation,
-            bus_activity=bus_activity,
-            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=symbol_info)
+            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=symbol_info),
+            bus_activity=bus_activity
         )
-        return snapshot
 
     @abstractmethod
     def get_register_map(self) -> Dict[str, int]:

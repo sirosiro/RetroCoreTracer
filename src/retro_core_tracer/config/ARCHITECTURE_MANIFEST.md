@@ -63,6 +63,9 @@
     - `load_from_file(path: str) -> SystemConfig`
 
 #### 3.5. SystemBuilder
-- **責務:** `SystemConfig`を受け取り、組み立てられた`Bus`と`Cpu`のインスタンスを返す。CPUには`initial_state`が適用される。
+- **責務:** `SystemConfig`を受け取り、組み立てられた`Bus`と`Cpu`のインスタンスを返す。
+    - メモリマップ (`memory_map`) に基づいてデバイスを登録する。
+    - I/Oマップ (`io_map`) に基づいてI/Oデバイスを登録する。
+    - CPUの初期状態 (`initial_state`) を適用する。
 - **API:**
     - `build_system(config: SystemConfig) -> Tuple[AbstractCpu, Bus]`

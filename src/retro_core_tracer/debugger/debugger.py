@@ -20,6 +20,8 @@ class BreakpointConditionType(Enum):
     PC_MATCH = "PC_MATCH"               # プログラムカウンタが特定のアドレスに一致
     MEMORY_READ = "MEMORY_READ"         # 特定のアドレスが読み込まれた
     MEMORY_WRITE = "MEMORY_WRITE"       # 特定のアドレスに書き込まれた
+    IO_READ = "IO_READ"                 # 特定のI/Oポートが読み込まれた
+    IO_WRITE = "IO_WRITE"               # 特定のI/Oポートに書き込まれた
     REGISTER_VALUE = "REGISTER_VALUE"   # 特定のレジスタが特定の値になった
     REGISTER_CHANGE = "REGISTER_CHANGE" # 特定のレジスタの値が変化した
 
@@ -94,6 +96,14 @@ class Debugger:
             elif bp.condition_type == BreakpointConditionType.MEMORY_WRITE:
                 for access in snapshot.bus_activity:
                     if access.access_type == BusAccessType.WRITE and access.address == bp.address:
+                        return True
+            elif bp.condition_type == BreakpointConditionType.IO_READ:
+                for access in snapshot.bus_activity:
+                    if access.access_type == BusAccessType.IO_READ and access.address == bp.address:
+                        return True
+            elif bp.condition_type == BreakpointConditionType.IO_WRITE:
+                for access in snapshot.bus_activity:
+                    if access.access_type == BusAccessType.IO_WRITE and access.address == bp.address:
                         return True
             elif bp.condition_type == BreakpointConditionType.REGISTER_VALUE:
                 if bp.register_name:

@@ -20,9 +20,11 @@ Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ
 ### 対応するアーキテクチャと命令セット
 
 #### **Z80**
+![Z80 Screenshot](docs/assets/Z80-window-snapshot.png)
 *   転送、演算、分岐、ビット操作、ブロック転送、I/O、割り込み制御など、主要な命令セットを網羅。
 
 #### **MC6800**
+![MC6800 Screenshot](docs/assets/mc6800-window-snapshot.png)
 *   **転送命令:** `LDAA`, `LDAB`, `LDX`, `STAA`, `STAB`, `STS`, `LDS` (Direct/Extended/Immediate対応)
 *   **演算命令:** `ADDA`, `SUBA`, `ANDA`, `ORAA`, `CMPA` など
 *   **分岐・制御:** `BRA`, `BNE`, `BEQ`, `JMP`, `JSR`, `RTS`

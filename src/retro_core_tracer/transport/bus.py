@@ -121,6 +121,8 @@ class Bus:
     def __init__(self):
         # メモリマップ: (start_address, end_address, device) のタプルリスト
         self._memory_map: List[Tuple[int, int, Device]] = []
+        # I/Oマップ: (start_port, end_port, device) のタプルリスト
+        self._io_map: List[Tuple[int, int, Device]] = []
         self._bus_activity_log: List[BusAccess] = [] # バスアクセスログ
 
     # @intent:responsibility バスアクセスをログに記録します。
@@ -141,8 +143,6 @@ class Bus:
 
     # @intent:responsibility 指定されたアドレス範囲にデバイスを登録します。
     # @intent:pre-condition start_address <= end_addressかつ非負であり、deviceはDeviceのインスタンスである必要があります。
-    # @intent:rationale アドレス範囲の重複チェックは行いません。これはBusの責務ではなく、システム設計の層で管理されるべきと判断しました。
-    #                 もしRAMデバイスを登録する場合、そのサイズが指定されたアドレス範囲と一致する必要があります。
     def register_device(self, start_address: int, end_address: int, device: Device) -> None:
         """
         指定されたアドレス範囲にデバイスを登録します。
@@ -163,12 +163,20 @@ class Bus:
                 )
 
         self._memory_map.append((start_address, end_address, device))
-        # 登録順序に依存しないように、アドレスでソートすることも考慮できるが、
-        # 現在は単純にリストに追加する。より複雑なアドレス解決が必要になったら検討する。
-        # self._memory_map.sort(key=lambda x: x[0])
+
+    # @intent:responsibility 指定されたI/Oポート範囲にデバイスを登録します。
+    def register_io_device(self, start_port: int, end_port: int, device: Device) -> None:
+        """
+        指定されたI/Oポート範囲にデバイスを登録します。
+        """
+        if not (0 <= start_port <= end_port):
+            raise ValueError("Invalid port range: start_port must be <= end_port and non-negative.")
+        if not isinstance(device, Device):
+            raise TypeError("Device must be an instance of a class derived from Device.")
+
+        self._io_map.append((start_port, end_port, device))
 
     # @intent:responsibility 指定されたアドレスに対応するデバイスとオフセットを検索します。
-    # @intent:post-condition デバイスが見つからなかった場合、IndexErrorを発生させます。
     def _find_device(self, address: int) -> Tuple[Device, int]:
         """
         指定されたアドレスに対応するデバイスと、デバイス内でのオフセットを検索します。
@@ -178,6 +186,17 @@ class Bus:
             if start <= address <= end:
                 return device, address - start
         raise IndexError(f"Address {address:#06x} not mapped to any device.")
+
+    # @intent:responsibility 指定されたポートに対応するI/Oデバイスとオフセットを検索します。
+    def _find_io_device(self, port: int) -> Tuple[Device, int]:
+        """
+        指定されたポートに対応するデバイスと、デバイス内でのオフセットを検索します。
+        見つからない場合はIndexErrorを発生させます。
+        """
+        for start, end, device in self._io_map:
+            if start <= port <= end:
+                return device, port - start
+        raise IndexError(f"Port {port:#04x} not mapped to any IO device.")
 
     # @intent:responsibility 指定されたアドレスから8bitのデータを読み出します。
     # @intent:pre-condition アドレスはマップされたデバイスの有効範囲内である必要があります。
@@ -200,61 +219,49 @@ class Bus:
         device, offset = self._find_device(address)
         return device.read(offset)
 
-    # @intent:responsibility 指定されたアドレスに8bitのデータを書き込みます。
-    def write(self, address: int, data: int) -> None:
+    # @intent:responsibility バス上のメモリ/I/Oデバイスに初期化データを書き込みます。
+    # @intent:rationale Loader専用のAPIです。ROMデバイスに対しても load_data を介して強制的に書き込みを行います。
+    #                 物理的な書き込み（Bus.write）とは明確に区別します。
+    def load(self, address: int, data: int) -> None:
         """
-        指定された物理アドレスに8bitのデータを書き込みます。
-        ROMへの書き込みの場合、ROMクラスの実装により無視されるか、
-        ローダーによる初期化書き込みの場合は load_data が使われるべきです。
-        ただし、現在のLoader実装は bus.write を使用しているため、
-        Loaderからの書き込みを許可するための特別な配慮が必要です。
-        
-        @intent:design_decision
-        現状のLoaderはBusに対して透過的に書き込みを行います。
-        ROMへのプログラムロードを可能にするため、ROMデバイス側で
-        「通常のwriteは無視するが、バックドア（load_data）を用意する」形にしました。
-        しかし、LoaderはBusしか知らないため、Busのwriteメソッド内で
-        「ROMであってもロード時は書き込みたい」という要求が発生します。
-        
-        ここでは簡易的に、ROMであっても load_data を呼び出すように分岐します。
-        将来的には、Busに「loadモード」のような状態を持たせるか、
-        Loaderが専用のAPIを使うべきです。
-        現状は「Bus.writeは常に書き込みを試みる（ROMならload_dataに委譲）」とします。
-        実行時の不正書き込み検出は、CPU側またはデバッガ側の責務とするか、
-        あるいは Bus.write は常に物理的な書き込み（ROMなら無効）とし、
-        Loader用には Bus.load(addr, data) を新設するのが正しい姿です。
-        
-        今回は既存のLoaderを変更しないため、ROMへの書き込みは
-        "load_data" への委譲として実装し、
-        「実行中のROM書き込み」は「書き込めてしまう（エミュレータの便宜上）」
-        または「無視される（ROM.writeの実装通り）」のどちらかになります。
-        
-        ROM.write が pass になっているので、通常の bus.write 経由だと
-        書き込みは無視されます。これだとLoaderが機能しません。
-        
-        よって、Bus.write では ROM インスタンスかどうかをチェックし、
-        ROMであれば load_data を呼ぶようにします。
-        これでは実行中の書き込みも成功してしまいますが、
-        まずは「プログラムがロードできること」を優先します。
+        指定された物理アドレスに8bitの初期化データをロードします。
+        Loaderなどの初期化プロセス専用です。ROMに対しても書き込み可能です。
         """
         device, offset = self._find_device(address)
         
         if isinstance(device, ROM):
-            # @intent:workaround LoaderがROMに書き込めるようにするための処置。
-            # 本来はLoader専用のAPIを用意すべきだが、今回は既存コードへの影響を最小限にする。
             device.load_data(offset, data)
         else:
             device.write(offset, data)
             
+        # ロード時のアクセスもログに残すかどうかは議論の余地があるが、
+        # 初期化フェーズの可視化も有用なため、通常のWRITEとして記録する。
+        self._log_access(address, data, BusAccessType.WRITE)
+
+    # @intent:responsibility 指定されたアドレスに8bitのデータを書き込みます。
+    def write(self, address: int, data: int) -> None:
+        """
+        指定された物理アドレスに8bitのデータを書き込みます。
+        ROMへの書き込みは、ROMデバイスの物理的特性に従って無視されます（書き込まれません）。
+        実行中の誤書き込みをエミュレートするため、Loaderは使用してはいけません。
+        """
+        device, offset = self._find_device(address)
+        device.write(offset, data)
         self._log_access(address, data, BusAccessType.WRITE)
 
     # @intent:responsibility 指定されたI/Oポートから8bitのデータを読み出します。
     def read_io(self, address: int) -> int:
         """
         指定されたI/Oポートから8bitのデータを読み出します。
-        現状はデバイスマッピング未実装のため、常に0を返し、ログのみ記録します。
         """
-        data = 0x00 # Default value for unmapped IO
+        try:
+            device, offset = self._find_io_device(address)
+            data = device.read(offset)
+        except IndexError:
+            # I/Oマップされていないポートへのアクセスは、実機依存（0xFFや浮遊容量など）だが、
+            # ここでは0x00を返し、ログに残す。
+            data = 0x00
+            
         self._log_access(address, data, BusAccessType.IO_READ)
         return data
 
@@ -262,6 +269,12 @@ class Bus:
     def write_io(self, address: int, data: int) -> None:
         """
         指定されたI/Oポートに8bitのデータを書き込みます。
-        現状はデバイスマッピング未実装のため、ログのみ記録します。
         """
+        try:
+            device, offset = self._find_io_device(address)
+            device.write(offset, data)
+        except IndexError:
+            # マップされていないポートへの書き込みは無視する
+            pass
+            
         self._log_access(address, data, BusAccessType.IO_WRITE)

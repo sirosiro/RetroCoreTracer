@@ -27,6 +27,13 @@ class SystemBuilder:
             if device:
                 bus.register_device(region.start, region.end, device)
         
+        # @intent:feature I/Oマップに基づいてI/Oデバイスをバスに登録します。
+        for region in config.io_map:
+            size = region.end - region.start + 1
+            # I/Oデバイスの具体的な型は現状RAMで代用します（将来的に専用クラスが必要になる可能性があります）。
+            device = RAM(size)
+            bus.register_io_device(region.start, region.end, device)
+
         if config.architecture == "Z80":
             cpu = Z80Cpu(bus)
         elif config.architecture == "MC6800":

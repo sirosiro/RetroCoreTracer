@@ -19,9 +19,11 @@
 
 - **原則: バスアクセスは、アドレスとデータペイロードのみに限定される。**
   - **理由:** CPUコアからバスへのインターフェースをシンプルに保ち、下位レイヤー（デバイスドライバ）の複雑性を上位レイヤーに伝播させないため。
+  - **例外:** システム初期化（ロード）時のみ、物理的な書き込み制限（ROMなど）をバイパスする特権的な `load` メソッドの使用を許可する。
 
 - **原則: メモリマップドI/Oを含む全てのアクセスは、単一のBusインターフェースを介して行われる。**
   - **理由:** CPUコア側がROM、RAM、I/Oを意識することなく、アドレス指定だけでアクセスを完結できるようにし、CPU実装の抽象度を高めるため。
+  - **補足:** 独立したI/O空間（Z80のPort I/Oなど）を持つアーキテクチャのために、`read_io`/`write_io` インターフェースも提供するが、これらもBusクラスが一元管理する。
 
 ### 2. コンポーネント設計仕様 (Component Design Specifications)
 
@@ -53,8 +55,14 @@
     - `load_data(self, data: bytes, offset: int) -> None`: 初期化時にデータをロードするためのバックドアメソッド。
 
 #### 4.6. Bus (主要コンポーネント)
-- **責務:** アドレス空間を一元管理し、アクセスを適切なデバイスへディスパッチする。全てのアクセスをログに記録する。
+- **責務:** アドレス空間およびI/Oポート空間を一元管理し、アクセスを適切なデバイスへディスパッチする。全てのアクセスをログに記録する。
 - **提供するAPI:**
-    - `register_device(...)`
-    - `read/write/peek`
-    - `get_and_clear_activity_log()`
+    - `register_device(start: int, end: int, device: Device)`: メモリ空間へのデバイス登録。
+    - `register_io_device(start: int, end: int, device: Device)`: I/O空間へのデバイス登録。
+    - `read(address: int) -> int`: メモリ読み込み。
+    - `write(address: int, data: int) -> None`: メモリ書き込み（ROMの場合は無視）。
+    - `load(address: int, data: int) -> None`: 初期化データロード（ROMへも書き込み可）。
+    - `read_io(port: int) -> int`: I/Oポート読み込み。
+    - `write_io(port: int, data: int) -> None`: I/Oポート書き込み。
+    - `peek(address: int) -> int`: ログを残さないメモリ読み込み（デバッガ用）。
+    - `get_and_clear_activity_log()`: バスの活動ログ取得とクリア。

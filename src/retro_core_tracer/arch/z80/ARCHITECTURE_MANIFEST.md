@@ -129,17 +129,8 @@
         - **責務:** `instructions`モジュールの`decode_opcode`関数を呼び出し、与えられたオペコードをデコードする。`bus`と`pc`情報も渡すことで、マルチバイトオペランドの処理を可能にする。
     - `_execute(self, operation: Operation) -> None`:
         - **責務:** `instructions`モジュールの`execute_instruction`関数を呼び出し、デコードされた命令を実行する。`Z80CpuState`と`Bus`のインスタンスを渡すことで、命令がCPUの状態を変更したり、バスと相互作用したりできるようにする。
-    - `step(self) -> Snapshot`:
-        - **責務:** Z80 CPUを1命令サイクル分実行し、その結果を完全な`Snapshot`オブジェクトとして返す。
-        - **処理フロー:**
-            1. 実行前の`pc`を保存する。
-            2. `self._bus.get_and_clear_activity_log()`を呼び出し、前サイクルのバスアクティビティをクリアする。
-            3. `_fetch()`によりオペコードを取得する。
-            4. `_decode()`によりオペコードをデコードし、`Operation`オブジェクトを得る。
-            5. `operation.length`に基づいて`Z80CpuState.pc`をインクリメントし、次の命令の先頭を指すようにする。
-            6. `_execute()`により命令を実行する。
-            7. `self._bus.get_and_clear_activity_log()`を呼び出し、このサイクル中に発生した全てのバスアクティビティを取得する。
-            8. 実行後の`Z80CpuState`、`Operation`、`Metadata`（`cycle_count`と`symbol_info`を含む）、および取得した`bus_activity`を含む`Snapshot`オブジェクトを構築し、返す。
+    - `_handle_halt(self, current_pc: int) -> Optional[Snapshot]`:
+        - **責務:** HALT状態の場合、NOPとして振る舞いPCを進めない特別なスナップショットを生成して返す。
     - `get_register_map(self) -> Dict[str, int]`:
         - **責務:** `Z80CpuState`の各レジスタ（AF, BC, DE, HL, IX, IY, SP, PC, I, R, AF', BC', DE', HL'）の現在の値を辞書形式で返す。
     - `get_register_layout(self) -> List[RegisterLayoutInfo]`:

@@ -54,62 +54,21 @@ class Z80Cpu(AbstractCpu):
         # _executeにbusを渡すのは、メモリ操作を伴う命令があるため
         execute_instruction(operation, self._state, self._bus)
 
-    # @intent:responsibility CPUを1命令サイクル進め、その結果のスナップショットを返します。
-    # @intent:rationale このメソッドはフェッチ、デコード、実行のプロセスを内部で管理し、
-    #                  その結果をUIやデバッガが利用可能な不変のSnapshotとして提供します。
-    def step(self) -> Snapshot:
-        initial_pc = self._state.pc # フェッチ前のPCを保存
-
-        # 各命令実行前のバスアクティビティログをクリア
-        self._bus.get_and_clear_activity_log()
-
+    # @intent:responsibility HALT状態の場合の特殊処理を実装します。
+    def _handle_halt(self, current_pc: int) -> Snapshot:
         if self._state.halted:
-            # @intent:responsibility CPUがHALT状態の場合、NOP命令として振る舞い、PCを維持します。
-            # HALT中はバスアクティビティは発生しません（メモリ読み込みは行わない）。
+            # HALT中はバスアクティビティなし、サイクル+4、PC不変
             operation = Operation(opcode_hex="76", mnemonic="HALT (suspended)", cycle_count=4, length=0)
             self._cycle_count += operation.cycle_count
             bus_activity = []
             snapshot = Snapshot(
                 state=self.get_state(),
                 operation=operation,
-                metadata=Metadata(cycle_count=self._cycle_count, symbol_info=f"PC: {initial_pc:#06x} -> HALT (suspended)"),
+                metadata=Metadata(cycle_count=self._cycle_count, symbol_info=f"PC: {current_pc:#06x} -> HALT (suspended)"),
                 bus_activity=bus_activity,
             )
             return snapshot
-
-        # フェッチ
-        opcode = self._fetch() # fetch_opcode_byte from current PC and log in bus
-
-        # デコード
-        operation = self._decode(opcode)
-
-        # PCを命令長分進める
-        self._state.pc = (self._state.pc + operation.length) & 0xFFFF
-
-        # 実行
-        self._execute(operation) # execute_instruction will use self._bus and log its activities
-
-        # この命令サイクルで発生したすべてのバスアクティビティを取得
-        bus_activity = self._bus.get_and_clear_activity_log()
-
-        # サイクルカウントを更新
-        self._cycle_count += operation.cycle_count
-
-        # シンボル情報の取得
-        symbol_label = self._reverse_symbol_map.get(initial_pc, "")
-        symbol_info = f"{symbol_label}: " if symbol_label else ""
-        symbol_info += f"{operation.mnemonic}"
-        if operation.operands:
-            symbol_info += " " + ", ".join(operation.operands)
-
-        # スナップショットの生成
-        snapshot = Snapshot(
-            state=self.get_state(), # 実行後の状態
-            operation=operation,
-            metadata=Metadata(cycle_count=self._cycle_count, symbol_info=symbol_info),
-            bus_activity=bus_activity, # Actual bus activity
-        )
-        return snapshot
+        return None
 
     def get_register_map(self) -> Dict[str, int]:
         s = self._state

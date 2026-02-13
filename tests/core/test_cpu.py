@@ -32,7 +32,6 @@ class TestCpu(AbstractCpu):
 
     def _fetch(self) -> int:
         opcode = self._bus.read(self._state.pc) 
-        self._state.pc += 1 
         return opcode
 
     def _decode(self, opcode: int) -> Operation:

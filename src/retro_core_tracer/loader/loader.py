@@ -70,7 +70,7 @@ class IntelHexLoader(BaseLoader):
                         load_address = (current_extended_linear_address + address_field) & 0xFFFFFFFF
                         for i in range(data_length):
                             byte_data = int(data_part_str[i*2:(i*2)+2], 16)
-                            bus.write(load_address + i, byte_data)
+                            bus.load(load_address + i, byte_data)
                     elif record_type == 0x01:
                         break
                     elif record_type == 0x04:
@@ -127,7 +127,7 @@ class SRecordLoader(BaseLoader):
                         data_str = line[4+addr_len:-2]
                         for i in range(len(data_str) // 2):
                             byte_data = int(data_str[i*2:(i*2)+2], 16)
-                            bus.write(address + i, byte_data)
+                            bus.load(address + i, byte_data)
                     
                 except (ValueError, IndexError) as e:
                     raise ValueError(f"Error parsing S-Record line {line_num}: {e}")
@@ -159,7 +159,7 @@ class AssemblyLoader(BaseLoader):
             raise ValueError(f"Unsupported architecture for assembly loading: {architecture}")
 
         for addr, data in binary_data:
-            bus.write(addr, data)
+            bus.load(addr, data)
 
         return symbol_map
 

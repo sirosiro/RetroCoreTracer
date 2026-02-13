@@ -30,8 +30,8 @@ initial_state:
         
         # 3. バスにリセットベクトルを書き込む (ROMへのロードをシミュレート)
         # $FFFE -> $80, $FFFF -> $12  => $8012
-        bus.write(0xFFFE, 0x80)
-        bus.write(0xFFFF, 0x12)
+        bus.load(0xFFFE, 0x80)
+        bus.load(0xFFFF, 0x12)
         
         # 4. CPUをリセット (実機でのリセットボタン押下をシミュレート)
         cpu.reset()
