@@ -56,6 +56,9 @@ class MainWindow(QMainWindow):
         
         self.run_timer = QTimer()
         self.run_timer.timeout.connect(self._run_step)
+        
+        self.reverse_run_timer = QTimer()
+        self.reverse_run_timer.timeout.connect(self._reverse_run_step)
 
         self._setup_menus()
         self._setup_toolbar()
@@ -128,6 +131,22 @@ class MainWindow(QMainWindow):
         self.run_action.setEnabled(False)
         toolbar.addAction(self.run_action)
         
+        toolbar.addSeparator()
+        
+        # @intent:responsibility ツールバーにStep Backアクションを追加します。
+        self.step_back_action = QAction("Step Back", self)
+        self.step_back_action.triggered.connect(self._step_back)
+        self.step_back_action.setEnabled(False)
+        toolbar.addAction(self.step_back_action)
+
+        # @intent:responsibility ツールバーにRun Backアクションを追加します。
+        self.run_back_action = QAction("Run Back", self)
+        self.run_back_action.triggered.connect(self._run_back)
+        self.run_back_action.setEnabled(False)
+        toolbar.addAction(self.run_back_action)
+        
+        toolbar.addSeparator()
+        
         self.stop_action = QAction("Stop", self)
         self.stop_action.triggered.connect(self._stop)
         self.stop_action.setEnabled(False)
@@ -195,6 +214,13 @@ class MainWindow(QMainWindow):
         self.breakpoint_view.breakpoint_updated.connect(self._update_breakpoint)
         self._create_view_menu()
 
+    def _update_control_buttons(self, enabled: bool):
+        self.step_action.setEnabled(enabled)
+        self.run_action.setEnabled(enabled)
+        self.step_back_action.setEnabled(enabled)
+        self.run_back_action.setEnabled(enabled)
+        self.stop_action.setEnabled(not enabled)
+
     def _load_config(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Config File", "", "YAML Files (*.yaml);;All Files (*)")
         if file_name:
@@ -216,8 +242,8 @@ class MainWindow(QMainWindow):
                 self.core_canvas.set_cpu(self.cpu)
                 
                 self._update_all_views()
-                self.step_action.setEnabled(True)
-                self.run_action.setEnabled(True)
+                self._update_control_buttons(True)
+                self.stop_action.setEnabled(False) # 初期状態ではStopは無効
                 self.statusBar().showMessage(f"Loaded config: {file_name}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load config: {str(e)}")
@@ -286,27 +312,62 @@ class MainWindow(QMainWindow):
             self._update_all_views()
             self.statusBar().showMessage(f"Executed: {snapshot.operation.mnemonic}")
 
+    def _step_back(self):
+        if self.debugger:
+            snapshot = self.debugger.step_back()
+            if snapshot:
+                self._update_all_views()
+                self.statusBar().showMessage(f"Reversed: {snapshot.operation.mnemonic}")
+            else:
+                self.statusBar().showMessage("Cannot step back: Start of history reached.")
+
     def _run(self):
-        self.run_action.setEnabled(False)
-        self.step_action.setEnabled(False)
-        self.stop_action.setEnabled(True)
+        self._update_control_buttons(False)
         self.run_timer.start(10)
+
+    def _run_back(self):
+        self._update_control_buttons(False)
+        self.reverse_run_timer.start(10)
 
     def _run_step(self):
         if self.debugger:
             current_pc = self.cpu.get_state().pc
+            # ブレークポイント判定 (UI側でやるかDebugger側でやるかだが、Debugger.run()はブロッキングなので
+            # ここでは1ステップずつ実行して判定する)
             for bp in self.debugger.get_breakpoints():
                 if bp.enabled and bp.condition_type == BreakpointConditionType.PC_MATCH and bp.value == current_pc:
                     self._stop()
                     self.statusBar().showMessage(f"Breakpoint hit at {current_pc:04X}")
                     return
+            
             snapshot = self.debugger.step_instruction()
             self._update_all_views()
             
+            if snapshot.operation.mnemonic == "HALT":
+                self._stop()
+                self.statusBar().showMessage("CPU Halted")
+
+    def _reverse_run_step(self):
+        if self.debugger:
+            current_pc = self.cpu.get_state().pc
+            # 逆実行時のブレークポイント判定
+            for bp in self.debugger.get_breakpoints():
+                if bp.enabled and bp.condition_type == BreakpointConditionType.PC_MATCH and bp.value == current_pc:
+                    self._stop()
+                    self.statusBar().showMessage(f"Reverse Breakpoint hit at {current_pc:04X}")
+                    return
+
+            snapshot = self.debugger.step_back()
+            if snapshot:
+                self._update_all_views()
+            else:
+                self._stop()
+                self.statusBar().showMessage("Reached start of history.")
+
     def _stop(self):
         self.run_timer.stop()
-        self.run_action.setEnabled(True)
-        self.step_action.setEnabled(True)
+        self.reverse_run_timer.stop()
+        self._update_control_buttons(True)
         self.stop_action.setEnabled(False)
         self.statusBar().showMessage("Stopped")
 

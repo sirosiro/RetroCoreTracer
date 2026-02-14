@@ -51,11 +51,27 @@
 - **Decision:** バス配線の座標とアニメーションパスを同一の計算ロジックから生成する。
 - **Rationale:** システム構成（Memory Map/IO Map）によってデバイスの配置が変わっても、アニメーションが常に正確に配線上をトレースすることを保証するため。
 
+- **Date:** 2026-02-14
+- **Core Principle:** タイムトラベルデバッグ。
+- **Decision:** `MainWindow` に StepBack/RunBack アクションを追加し、`Debugger` の機能をUIから制御可能にする。
+- **Rationale:** ユーザーが直感的に時間を巻き戻してデバッグを行えるようにするため。UI層は履歴管理の詳細を知らず、`debugger.step_back()` の結果（`Snapshot`）を受け取ってビューを更新する役割に徹する。
+
 ### 3. モジュール構成 (Module Structure)
 
+- **`main_window.py`**: アプリケーションのメインウィンドウ。ツールバー、ドックウィジェットの管理、およびデバッガとの連携を行う。
 - **`core_canvas.py`**: CPU、バス、メモリ、IOの動的なブロック図とパストレースアニメーションを管理する。
 
 ### 4. コンポーネント設計仕様 (Component Design Specifications)
+
+#### 4.1. MainWindow (メインウィンドウ)
+- **責務:**
+    - アプリケーション全体のUIレイアウトを管理する（DockWidget等）。
+    - システム構成ファイルのロードと初期化を制御する。
+    - **追加:** デバッガの実行制御（Step/Run/StepBack/RunBack/Stop）をツールバーアクションとして提供する。
+    - 各サブビューへの依存性注入と、実行スナップショットの配信を行う。
+- **提供するAPI:**
+    - `step_back_execution()`: ツールバーからのStepBackアクションを受け取り、デバッガを実行してビューを更新する。
+    - `run_back_execution()`: ツールバーからのRunBackアクションを受け取り、非同期またはループ処理で逆実行を行う。
 
 #### 4.9. CoreCanvas (ビジュアライザー)
 - **責務:**
