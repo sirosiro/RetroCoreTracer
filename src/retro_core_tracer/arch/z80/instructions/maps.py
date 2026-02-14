@@ -8,9 +8,10 @@ from .alu import (
 )
 from .load import (
     decode_push_pop, decode_ld_ss_nn, decode_ld_r_n, decode_ld_r_r_prime, decode_ix_iy, decode_ed,
+    decode_ld_a_nn, decode_ld_nn_a,
     execute_push_pop, execute_ld_ss_nn, execute_ld_r_n, execute_ld_r_r_prime, execute_ld_ix_iy_nn,
     execute_add_ix_iy_ss, execute_inc_ix_iy, execute_ex_sp_ix_iy, execute_ld_r_ix_iy_d, execute_ld_ix_iy_d_r,
-    execute_ed
+    execute_ed, execute_ld_a_nn, execute_ld_nn_a
 )
 from .control import (
     decode_cd, decode_c9, decode_00, decode_76, decode_c3, decode_18, decode_10, decode_jr_cc_e,
@@ -23,6 +24,8 @@ DECODE_MAP = {
     0x00: decode_00,
     0x08: decode_08,
     0x10: decode_10,
+    0x3A: decode_ld_a_nn,
+    0x32: decode_ld_nn_a,
     0x76: decode_76,
     0xCB: decode_cb,
     0xDD: decode_ix_iy,
@@ -59,6 +62,8 @@ EXECUTE_MAP = {
     0x00: execute_00,
     0x08: execute_08,
     0x10: execute_10,
+    0x3A: execute_ld_a_nn,
+    0x32: execute_ld_nn_a,
     0x76: execute_76,
     0xCB: execute_cb,
     0xED: execute_ed,

@@ -65,6 +65,11 @@
 - **Decision:** `BreakpointCondition` に `enabled` フラグを追加し、ブレークポイントの有効/無効を動的に切り替え可能にする。
 - **Rationale:** デバッグ中に一時的にブレークポイントを無効化したいケース（特定の条件でのみ停止させたい場合など）に対応し、UXを向上させるため。削除して再追加する手間を省く。
 
+- **Date:** 2026-02-14
+- **Core Principle:** タイムトラベルデバッグ。
+- **Decision:** `Debugger` クラスに履歴管理と逆方向実行（`run_back`）機能を追加する。
+- **Rationale:** 開発者や学習者が過去の実行状態に戻り、バグの発生原因を遡って調査できるようにするため。`BusAccess` に追加された `previous_data` と、不変な `Snapshot` の履歴を活用する。
+
 ### 3. AIとの協調に関する指針 (AI Collaboration Policy)
 
 *このセクションは、AIがどう振る舞うべきかの指針を記述します。*
@@ -102,6 +107,7 @@
     - `AbstractCpu`の実行フローを制御（一時停止、継続、ステップ実行）。
     - ユーザー定義のブレークポイント条件を管理し、条件が満たされた場合にCPUの実行を中断する。
     - CPUコアの内部状態に直接干渉することなく、`Snapshot`オブジェクトを介してCPUとバスの状態を観測する。
+    - **追加:** 実行履歴（`Snapshot` のリスト）を管理し、タイムトラベルデバッグ（Stepback / Reverse Run）機能を提供する。
 - **提供するAPI (Public API):**
     - `__init__(self, cpu: AbstractCpu)`:
         - **責務:** `Debugger`インスタンスを初期化し、デバッグ対象となる`AbstractCpu`インスタンスへの参照を保持する。
@@ -118,10 +124,21 @@
     - `get_breakpoints(self) -> List[BreakpointCondition]`:
         - **責務:** 現在設定されている全てのブレークポイントのリスト（コピー）を返す。
     - `step_instruction(self) -> Snapshot`:
-        - **責務:** `AbstractCpu`の`step()`メソッドを1回呼び出し、CPUを1命令分実行する。実行結果として`Snapshot`オブジェクトを返し、`REGISTER_CHANGE`ブレークポイントのために前回のCPU状態を更新する。
+        - **責務:** `AbstractCpu`の`step()`メソッドを1回呼び出し、CPUを1命令分実行する。実行結果として`Snapshot`オブジェクトを返し、`REGISTER_CHANGE`ブレークポイントのために前回のCPU状態を更新する。履歴リストにSnapshotを追加する。
         - **戻り値:** `Snapshot` - 命令実行後のCPUとバスの状態。
+    - `step_back(self) -> Optional[Snapshot]`:
+        - **責務:** 実行履歴を1つ戻り、CPUとメモリの状態を復元する。
+        - **処理フロー:**
+            1. 履歴リストが空なら `None` を返す。
+            2. 履歴リストから最新の `Snapshot` をポップする（これを「取り消される命令」とする）。
+            3. ポップした `Snapshot.bus_activity` を逆順に走査し、`WRITE` 操作があれば `previous_data` を使ってメモリ値を復元する。
+            4. 履歴リストの末尾（＝1つ前の時点）の `Snapshot` を取得する（なければ初期状態）。
+            5. その `Snapshot.state` を `cpu.restore_state()` に渡してCPU状態を復元する。
+            6. 復元された時点の `Snapshot` を返す。
     - `get_last_snapshot(self) -> Optional[Snapshot]`:
         - **責務:** 最後に実行されたステップ（命令）の結果生成された`Snapshot`オブジェクトを返す。まだ実行されていない場合は`None`を返す。
+    - `get_history(self) -> List[Snapshot]`: 
+        - **責務:** 現在保持している実行履歴を返す（UI表示用）。
     - `run(self) -> None`:
         - **責務:** CPUの実行を連続的に継続する。ブレークポイントにヒットするか、`stop()`メソッドが呼び出されるまでループを続ける。
         - **実行制御フロー:**
@@ -129,10 +146,17 @@
             2. `step_instruction()`を呼び出し、命令を実行し`Snapshot`を取得する。
             3. `_check_other_breakpoints()`を呼び出し、`PC_MATCH`以外のブレークポイント（メモリ読み書き、レジスタ値、かつ`enabled`がTrue）を`Snapshot`に基づいてチェックする。
             4. いずれかのブレークポイントにヒットした場合、連続実行を停止する。
+    - `run_back(self) -> None`:
+        - **責務:** CPUの実行を逆方向（過去）へ連続的に戻す。
+        - **実行制御フロー:**
+            1. `step_back()` をループ実行する。
+            2. 各ステップ後に、復元された状態に対してブレークポイント（PC一致、メモリ値など）を評価する。
+            3. ブレークポイントにヒットするか、履歴の先頭に到達するか、`stop()` が呼ばれるまで続ける。
     - `stop(self) -> None`:
-        - **責務:** `run()`メソッドで実行中の連続実行ループを中断するようシグナルを送る。
+        - **責務:** `run()`または`run_back()`メソッドで実行中の連続実行ループを中断するようシグナルを送る。
 - **主要なデータ構造 (Key Data Structures):**
     - `_previous_state: Optional[CpuState]`: `REGISTER_CHANGE`ブレークポイントの評価のために、命令実行直前のCPUの状態を保持する。
+    - `_history: List[Snapshot]`: 実行履歴を保持するリスト。
 - **重要なアルゴリズム (Key Algorithms):**
     - **ブレークポイント評価:**
         - `PC_MATCH`は、`run()`ループ内で`AbstractCpu.get_state().pc`とブレークポイント条件の`value`を比較することで、命令実行*前*にチェックされる。

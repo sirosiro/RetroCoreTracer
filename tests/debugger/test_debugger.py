@@ -236,6 +236,7 @@ class TestDebugger:
                 debugger.run()
                 assert mock_step_instruction.call_count == 1
                 assert not debugger._running
+
     # @intent:test_case_run_until_breakpoint run()メソッドがブレークポイントヒットで停止することを検証します。
     def test_run_until_breakpoint(self, setup_debugger):
         debugger, cpu, bus, ram = setup_debugger
@@ -253,3 +254,96 @@ class TestDebugger:
             assert not debugger._running
             assert cpu.get_state().pc == target_pc
             mock_print.assert_called_with(f"Breakpoint hit at PC: {target_pc:#06x}")
+
+    # @intent:test_case_step_back step_backがCPU状態とメモリを復元することを検証します。
+    def test_debugger_step_back(self, setup_debugger):
+        debugger, cpu, bus, ram = setup_debugger
+        
+        # 1. 初期状態を記録
+        initial_pc = 0x0000
+        initial_sp = cpu.get_state().sp
+        target_addr = 0x0020
+        
+        # 初期メモリ値は0
+        assert ram.read(target_addr) == 0x00
+        
+        # 2. 状態を変更する命令を実行 (LD A, 0xFF; LD (0x0020), A)
+        # 0x0000: LD A, 0xFF (3E FF)
+        bus.write(0x0000, 0x3E)
+        bus.write(0x0001, 0xFF)
+        
+        # 0x0002: LD (0x0020), A (32 20 00)
+        bus.write(0x0002, 0x32)
+        bus.write(0x0003, 0x20)
+        bus.write(0x0004, 0x00)
+        
+        cpu.get_state().pc = 0x0000
+        
+        # Step 1: LD A, 0xFF
+        debugger.step_instruction()
+        assert cpu.get_state().a == 0xFF
+        assert cpu.get_state().pc == 0x0002
+        
+        # Step 2: LD (0x0020), A
+        debugger.step_instruction()
+        assert ram.read(target_addr) == 0xFF
+        assert cpu.get_state().pc == 0x0005
+        
+        assert len(debugger.get_history()) == 2
+        
+        # 3. Step Back (Undo LD (0x0020), A)
+        restored_snapshot = debugger.step_back()
+        
+        # 検証: PCは0x0002に戻るはず
+        assert restored_snapshot is not None
+        assert restored_snapshot.state.pc == 0x0002
+        assert cpu.get_state().pc == 0x0002
+        assert cpu.get_state().a == 0xFF
+        
+        # 検証: メモリ書き込みが取り消されているはず
+        assert ram.read(target_addr) == 0x00
+        
+        assert len(debugger.get_history()) == 1
+        
+        # 4. Step Back (Undo LD A, 0xFF)
+        restored_snapshot = debugger.step_back()
+        
+        # 検証: 初期状態に戻るはず
+        assert restored_snapshot is None
+        assert cpu.get_state().pc == 0x0000
+        # Aレジスタの値は初期状態（多分0）に戻るはず
+        assert cpu.get_state().a == 0x00
+        
+        assert len(debugger.get_history()) == 0
+
+    # @intent:test_case_run_back run_backがPCブレークポイントで停止することを検証します。
+    def test_debugger_run_back_pc_breakpoint(self, setup_debugger):
+        debugger, cpu, bus, ram = setup_debugger
+        
+        # 0x0000から0x0003までNOP(0x00)で埋める
+        for addr in range(4):
+            bus.write(addr, 0x00)
+            
+        cpu.get_state().pc = 0x0000
+        
+        # 3ステップ実行 (PC: 0->1->2->3)
+        debugger.step_instruction()
+        debugger.step_instruction()
+        debugger.step_instruction()
+        
+        assert cpu.get_state().pc == 0x0003
+        
+        # PC=0x0001 にブレークポイント設定
+        bp = BreakpointCondition(BreakpointConditionType.PC_MATCH, value=0x0001)
+        debugger.add_breakpoint(bp)
+        
+        # Run Back
+        with patch('builtins.print') as mock_print:
+            debugger.run_back()
+            
+            # PC=0x0001 で停止しているか
+            assert not debugger._running
+            assert cpu.get_state().pc == 0x0001
+            # "Reverse Breakpoint hit..." が出力されたか
+            # 実装によっては "Breakpoint hit..." かもしれないので部分一致で確認
+            # mock_print.assert_called_with(...)

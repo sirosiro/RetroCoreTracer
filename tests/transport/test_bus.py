@@ -178,3 +178,50 @@ class TestBus:
         # ログがクリアされていることを確認
         log_after = bus.get_and_clear_activity_log()
         assert len(log_after) == 0
+
+    # @intent:test_case_write_records_previous_data Bus.write実行時に、書き込み前の値がprevious_dataとして記録されることを検証します。
+    def test_bus_write_records_previous_data(self):
+        from retro_core_tracer.transport.bus import BusAccessType
+
+        bus = Bus()
+        ram = RAM(16)
+        bus.register_device(0x0000, 0x000F, ram)
+
+        # 1. 初期状態は0x00
+        # 2. Write 0xAA to 0x0005. Previous should be 0x00.
+        bus.write(0x0005, 0xAA)
+
+        # 3. Write 0xBB to 0x0005. Previous should be 0xAA.
+        bus.write(0x0005, 0xBB)
+
+        log = bus.get_and_clear_activity_log()
+        assert len(log) == 2
+
+        # Log 1: Write 0xAA, Previous 0x00
+        assert log[0].address == 0x0005
+        assert log[0].data == 0xAA
+        assert log[0].access_type == BusAccessType.WRITE
+        assert log[0].previous_data == 0x00
+
+        # Log 2: Write 0xBB, Previous 0xAA
+        assert log[1].address == 0x0005
+        assert log[1].data == 0xBB
+        assert log[1].access_type == BusAccessType.WRITE
+        assert log[1].previous_data == 0xAA
+
+    # @intent:test_case_read_previous_data_is_none Bus.read実行時は、previous_dataがNoneであることを検証します。
+    def test_bus_read_previous_data_is_none(self):
+        from retro_core_tracer.transport.bus import BusAccessType
+        
+        bus = Bus()
+        ram = RAM(16)
+        bus.register_device(0x0000, 0x000F, ram)
+
+        bus.write(0x0000, 0x12)
+        bus.get_and_clear_activity_log()
+
+        bus.read(0x0000)
+        log = bus.get_and_clear_activity_log()
+        assert len(log) == 1
+        assert log[0].access_type == BusAccessType.READ
+        assert log[0].previous_data is None

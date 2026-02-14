@@ -34,6 +34,7 @@
 #### 4.2. BusAccess (データクラス)
 - **責務:** バス上で行われた個々のアクセス操作を不変な形式で記録する。
     - `address: int`, `data: int`, `access_type: BusAccessType`
+    - `previous_data: Optional[int]`: `WRITE` 操作の場合、上書きされる前のメモリ値を記録する。タイムトラベルデバッグ（Undo）用。読み込み操作や、以前の値が取得できない場合（I/O書き込み等）は `None`。
 
 #### 4.3. Device (抽象基底クラス)
 - **責務:** バスに接続される全てのメモリマップドデバイス、またはI/Oデバイスが実装すべき標準インターフェースを定義する。
@@ -60,7 +61,7 @@
     - `register_device(start: int, end: int, device: Device)`: メモリ空間へのデバイス登録。
     - `register_io_device(start: int, end: int, device: Device)`: I/O空間へのデバイス登録。
     - `read(address: int) -> int`: メモリ読み込み。
-    - `write(address: int, data: int) -> None`: メモリ書き込み（ROMの場合は無視）。
+    - `write(address: int, data: int) -> None`: メモリ書き込み（ROMの場合は無視）。書き込み前の値を読み出し、ログの `previous_data` に記録する責務を負う。
     - `load(address: int, data: int) -> None`: 初期化データロード（ROMへも書き込み可）。
     - `read_io(port: int) -> int`: I/Oポート読み込み。
     - `write_io(port: int, data: int) -> None`: I/Oポート書き込み。

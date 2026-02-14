@@ -73,6 +73,34 @@ def decode_ld_r_r_prime(opcode: int, bus: Bus, pc: int) -> Operation:
         length=1
     )
 
+def decode_ld_a_nn(opcode: int, bus: Bus, pc: int) -> Operation:
+    """LD A,(nn) 命令をデコードします。"""
+    nn_low = bus.read(pc + 1)
+    nn_high = bus.read(pc + 2)
+    nn = (nn_high << 8) | nn_low
+    return Operation(
+        opcode_hex="3A",
+        mnemonic="LD A,(nn)",
+        operands=[f"(${nn:04X})"],
+        cycle_count=13,
+        length=3,
+        operand_bytes=[nn_low, nn_high]
+    )
+
+def decode_ld_nn_a(opcode: int, bus: Bus, pc: int) -> Operation:
+    """LD (nn),A 命令をデコードします。"""
+    nn_low = bus.read(pc + 1)
+    nn_high = bus.read(pc + 2)
+    nn = (nn_high << 8) | nn_low
+    return Operation(
+        opcode_hex="32",
+        mnemonic="LD (nn),A",
+        operands=[f"(${nn:04X})"],
+        cycle_count=13,
+        length=3,
+        operand_bytes=[nn_low, nn_high]
+    )
+
 # @intent:responsibility オペコード0xDD / 0xFD (IX/IY プレフィックス) をデコードします。
 def decode_ix_iy(opcode: int, bus: Bus, pc: int) -> Operation:
     """IX/IY プレフィックス命令をデコードします。"""
@@ -280,6 +308,19 @@ def execute_ld_r_r_prime(state: Z80CpuState, bus: Bus, operation: Operation) -> 
     src_name = get_register_name(opcode & 0b111)
     val = get_register_value(state, bus, src_name)
     set_register_value(state, bus, dest_name, val)
+
+def execute_ld_a_nn(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """LD A,(nn)を実行します。"""
+    nn_low, nn_high = operation.operand_bytes
+    addr = (nn_high << 8) | nn_low
+    val = bus.read(addr)
+    state.a = val
+
+def execute_ld_nn_a(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
+    """LD (nn),Aを実行します。"""
+    nn_low, nn_high = operation.operand_bytes
+    addr = (nn_high << 8) | nn_low
+    bus.write(addr, state.a)
 
 def execute_ld_ix_iy_nn(state: Z80CpuState, bus: Bus, operation: Operation) -> None:
     prefix = int(operation.opcode_hex[:2], 16)

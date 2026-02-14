@@ -7,6 +7,7 @@ Core Layer (抽象CPU)
 """
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Tuple
+import dataclasses
 
 from retro_core_tracer.transport.bus import Bus
 from retro_core_tracer.core.snapshot import Snapshot, Operation, Metadata
@@ -81,8 +82,17 @@ class AbstractCpu(ABC):
     def get_state(self) -> CpuState:
         """
         現在のCPUの状態（レジスタ値など）を返します。
+        状態の不変性を保つため、内部状態のコピーを返します。
         """
-        return self._state
+        return dataclasses.replace(self._state)
+
+    # @intent:responsibility CPUの状態を復元します。
+    def restore_state(self, state: CpuState) -> None:
+        """
+        指定された状態オブジェクトの内容で、現在のCPU状態を上書きします。
+        タイムトラベルデバッグ（Stepback）機能で使用されます。
+        """
+        self._state = dataclasses.replace(state)
 
     # @intent:responsibility メモリから次の命令（オペコード）をフェッチします。
     @abstractmethod
@@ -178,13 +188,7 @@ class AbstractCpu(ABC):
 
         # スナップショットの生成
         return Snapshot(
-            state=self.get_state(), # 実行後の状態（コピーではないが、Snapshot生成時にイミュータブル化されることを期待）
-            # 注: Pythonのdataclassはデフォルトでは浅いコピーもしないので、
-            # stateが可変オブジェクトの場合、Snapshot内のstateも変化してしまうリスクがある。
-            # ただし、現在の実装ではCpuStateはデータクラスであり、Snapshot生成時に
-            # copy.deepcopyなどをするか、あるいはCpuState自体を毎回作り直す設計にする必要がある。
-            # 現状のコードベースではSnapshot作成時にstateのコピーを行っていないように見えるため、
-            # 将来的な課題として残るが、ここでは既存ロジックを踏襲する。
+            state=self.get_state(), # 実行後の状態（コピー）
             operation=operation,
             metadata=Metadata(cycle_count=self._cycle_count, symbol_info=symbol_info),
             bus_activity=bus_activity

@@ -6,7 +6,7 @@ Transport Layer (共通バス)
 読み書きアクセスを適切なデバイスに委譲する責務を負います。
 """
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 import warnings
@@ -27,6 +27,9 @@ class BusAccess:
     address: int
     data: int # 8bit value
     access_type: BusAccessType
+    # @intent:responsibility 書き込み前の値を保持し、タイムトラベルデバッグ（Undo）を可能にします。
+    # @intent:rationale Read操作や、値が取得できない場合（IO書き込み等）はNoneとなります。
+    previous_data: Optional[int] = None
 
 # @intent:responsibility バスの抽象デバイスインターフェースを定義します。
 class Device(ABC):
@@ -126,11 +129,11 @@ class Bus:
         self._bus_activity_log: List[BusAccess] = [] # バスアクセスログ
 
     # @intent:responsibility バスアクセスをログに記録します。
-    def _log_access(self, address: int, data: int, access_type: BusAccessType) -> None:
+    def _log_access(self, address: int, data: int, access_type: BusAccessType, previous_data: Optional[int] = None) -> None:
         """
         バスアクセス操作を内部ログに追加します。
         """
-        self._bus_activity_log.append(BusAccess(address=address, data=data, access_type=access_type))
+        self._bus_activity_log.append(BusAccess(address=address, data=data, access_type=access_type, previous_data=previous_data))
 
     # @intent:responsibility 記録されたバスアクティビティログを取得し、クリアします。
     def get_and_clear_activity_log(self) -> List[BusAccess]:
@@ -227,6 +230,12 @@ class Bus:
         指定された物理アドレスに8bitの初期化データをロードします。
         Loaderなどの初期化プロセス専用です。ROMに対しても書き込み可能です。
         """
+        # 書き込み前の値を保存 (Undo用)
+        try:
+            previous_data = self.peek(address)
+        except IndexError:
+            previous_data = None
+
         device, offset = self._find_device(address)
         
         if isinstance(device, ROM):
@@ -236,7 +245,7 @@ class Bus:
             
         # ロード時のアクセスもログに残すかどうかは議論の余地があるが、
         # 初期化フェーズの可視化も有用なため、通常のWRITEとして記録する。
-        self._log_access(address, data, BusAccessType.WRITE)
+        self._log_access(address, data, BusAccessType.WRITE, previous_data=previous_data)
 
     # @intent:responsibility 指定されたアドレスに8bitのデータを書き込みます。
     def write(self, address: int, data: int) -> None:
@@ -245,9 +254,15 @@ class Bus:
         ROMへの書き込みは、ROMデバイスの物理的特性に従って無視されます（書き込まれません）。
         実行中の誤書き込みをエミュレートするため、Loaderは使用してはいけません。
         """
+        # 書き込み前の値を保存 (Undo用)
+        try:
+            previous_data = self.peek(address)
+        except IndexError:
+            previous_data = None
+
         device, offset = self._find_device(address)
         device.write(offset, data)
-        self._log_access(address, data, BusAccessType.WRITE)
+        self._log_access(address, data, BusAccessType.WRITE, previous_data=previous_data)
 
     # @intent:responsibility 指定されたI/Oポートから8bitのデータを読み出します。
     def read_io(self, address: int) -> int:

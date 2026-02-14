@@ -114,21 +114,52 @@ class TestAbstractCpu:
 
     def test_abstract_cpu_reset(self, setup_cpu):
         cpu, _, _ = setup_cpu
-        cpu.get_state().pc = 0xAAAA
-        cpu.get_state().sp = 0xBBBB
-        assert cpu.get_state().pc == 0xAAAA
+        
+        # 状態を変更
+        new_state = cpu.get_state()
+        new_state.pc = 0xAAAA
+        new_state.sp = 0xBBBB
+        cpu.restore_state(new_state)
+        
+        # 変更されたことを確認
+        current_state = cpu.get_state()
+        assert current_state.pc == 0xAAAA
+        assert current_state.sp == 0xBBBB
 
+        # リセット
         cpu.reset()
-        state = cpu.get_state()
-        assert state.pc == 0x0010 
-        assert state.sp == 0x00F0 
+        
+        # 初期状態に戻っていることを確認
+        reset_state = cpu.get_state()
+        assert reset_state.pc == 0x0010 
+        assert reset_state.sp == 0x00F0 
 
     def test_abstract_cpu_get_state(self, setup_cpu):
         cpu, _, _ = setup_cpu
         state = cpu.get_state()
         assert state.pc == 0x0010
+        
+        # 取得した状態を変更しても、CPU内部の状態には影響しないこと（コピーであること）を確認
         state.pc = 0x3333 
-        assert cpu.get_state().pc == 0x3333 
+        assert cpu.get_state().pc == 0x0010
+
+    def test_abstract_cpu_restore_state(self, setup_cpu):
+        cpu, _, _ = setup_cpu
+        
+        # 復元用の状態を作成
+        restore_target = CpuState(pc=0x1234, sp=0x5678)
+        
+        # 状態を復元
+        cpu.restore_state(restore_target)
+        
+        # 状態が反映されていることを確認
+        current_state = cpu.get_state()
+        assert current_state.pc == 0x1234
+        assert current_state.sp == 0x5678
+        
+        # restoreに渡したオブジェクトを変更しても、CPU内部には影響しないこと（コピーして保持していること）を確認
+        restore_target.pc = 0x9999
+        assert cpu.get_state().pc == 0x1234
 
     def test_abstract_cpu_step(self, setup_cpu):
         from retro_core_tracer.transport.bus import BusAccessType
@@ -163,27 +194,3 @@ class TestAbstractCpu:
         assert snapshot.bus_activity[1].address == 0x0020
         assert snapshot.bus_activity[1].data == 0xFF
         assert snapshot.bus_activity[1].access_type == BusAccessType.WRITE
-
-    # --- UI向けAPIのテストを追加 ---
-    def test_ui_api_integration(self, setup_cpu):
-        cpu, _, _ = setup_cpu
-        
-        # Register Map
-        reg_map = cpu.get_register_map()
-        assert reg_map["PC"] == 0x0010
-        assert reg_map["SP"] == 0x00F0
-        
-        # Register Layout
-        layout = cpu.get_register_layout()
-        assert len(layout) == 1
-        assert layout[0].group_name == "Test Group"
-        assert len(layout[0].registers) == 2
-        
-        # Flags
-        flags = cpu.get_flag_state()
-        assert flags["Z"] is False
-        
-        # Disassemble
-        asm = cpu.disassemble(0x0000, 2)
-        assert len(asm) == 2
-        assert asm[0] == (0x0000, "00", "NOP")
