@@ -155,6 +155,10 @@ class AssemblyLoader(BaseLoader):
         elif architecture == "MC6800":
             assembler = Mc6800Assembler()
             symbol_map, binary_data = assembler.assemble(lines)
+        elif architecture == "MOS6502":
+            from retro_core_tracer.arch.mos6502.assembler import Mos6502Assembler
+            assembler = Mos6502Assembler()
+            symbol_map, binary_data = assembler.assemble(lines)
         else:
             raise ValueError(f"Unsupported architecture for assembly loading: {architecture}")
 

@@ -30,6 +30,12 @@ Retro Core Tracerは、CPUエミュレーションの内部動作（レジスタ
 *   **分岐・制御:** `BRA`, `BNE`, `BEQ`, `JMP`, `JSR`, `RTS`
 *   *(順次実装拡充中)*
 
+#### **MOS 6502**
+![MOS 6502 Screenshot](docs/assets/mos6502-window-snapshot.png)
+*   **特徴:** 8bit Accumulator/Index Registers, Memory Mapped I/O, Page Zero/Stack ($0100) マッピング。
+*   **命令セット:** `LDA`, `LDX`, `LDY`, `STA`, `STX`, `STY`, `ADC/SBC` (BCD対応), `JMP` (Indirectバグ再現), `BCC`, `BCS` 等の主要命令を網羅。
+*   **教育的機能:** スタックポインタの物理アドレス補正表示 ($01xx)、BCDフラグ挙動の可視化。
+
 ## 🚀 インストール & 使い方
 
 ### 前提条件

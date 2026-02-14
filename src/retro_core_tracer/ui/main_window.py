@@ -35,50 +35,16 @@ class MainWindow(QMainWindow):
         
         # Apply Global Dark Theme
         self.setStyleSheet("""
-            QMainWindow {
-                background-color: #121212;
-            }
-            QDockWidget {
-                color: #BBBBBB;
-                background-color: #121212;
-                border: 1px solid #222;
-            }
-            QDockWidget::title {
-                background: #121212;
-                padding-left: 5px;
-                padding-top: 4px;
-                border-bottom: 1px solid #222;
-            }
-            QWidget {
-                background-color: #121212;
-                color: #BBBBBB;
-            }
-            QToolBar {
-                background: #121212;
-                border-bottom: 1px solid #222;
-                spacing: 10px;
-            }
-            QStatusBar {
-                background: #121212;
-                color: #888888;
-                border-top: 1px solid #222;
-            }
-            QMenuBar {
-                background-color: #121212;
-                color: #BBBBBB;
-                border-bottom: 1px solid #222;
-            }
-            QMenuBar::item:selected {
-                background-color: #252525;
-            }
-            QMenu {
-                background-color: #121212;
-                color: #BBBBBB;
-                border: 1px solid #444;
-            }
-            QMenu::item:selected {
-                background-color: #252525;
-            }
+            QMainWindow { background-color: #121212; }
+            QDockWidget { color: #BBBBBB; background-color: #121212; border: 1px solid #222; }
+            QDockWidget::title { background: #121212; padding-left: 5px; padding-top: 4px; border-bottom: 1px solid #222; }
+            QWidget { background-color: #121212; color: #BBBBBB; }
+            QToolBar { background: #121212; border-bottom: 1px solid #222; spacing: 10px; }
+            QStatusBar { background: #121212; color: #888888; border-top: 1px solid #222; }
+            QMenuBar { background-color: #121212; color: #BBBBBB; border-bottom: 1px solid #222; }
+            QMenuBar::item:selected { background-color: #252525; }
+            QMenu { background-color: #121212; color: #BBBBBB; border: 1px solid #444; }
+            QMenu::item:selected { background-color: #252525; }
         """)
 
         # コアコンポーネント
@@ -86,18 +52,15 @@ class MainWindow(QMainWindow):
         self.cpu = None
         self.debugger = None
         self.config = None
+        self.builder = SystemBuilder() # @intent:responsibility システム構築ロジックを保持します。
         
-        # 実行制御用タイマー
         self.run_timer = QTimer()
         self.run_timer.timeout.connect(self._run_step)
 
-        # UIのセットアップ
         self._setup_menus()
         self._setup_toolbar()
         self._setup_docks()
-        
         self._restore_settings()
-        
         self.statusBar().showMessage("Ready")
 
     def closeEvent(self, event: QCloseEvent):
@@ -112,11 +75,9 @@ class MainWindow(QMainWindow):
     def _restore_settings(self):
         settings = QSettings("RetroCoreTracer", "RetroCoreTracer")
         geometry = settings.value("geometry")
-        if geometry:
-            self.restoreGeometry(geometry)
+        if geometry: self.restoreGeometry(geometry)
         state = settings.value("windowState")
-        if state:
-            self.restoreState(state)
+        if state: self.restoreState(state)
 
     def _setup_menus(self):
         menubar = self.menuBar()
@@ -148,24 +109,13 @@ class MainWindow(QMainWindow):
     def _create_view_menu(self):
         menubar = self.menuBar()
         view_menu = menubar.addMenu("&View")
-        
-        # Add toggle actions for all dock widgets
-        docks = [
-            self.code_dock,
-            self.reg_dock,
-            self.flag_dock,
-            self.hex_dock,
-            self.stack_dock,
-            self.mmap_dock,
-            self.bp_dock
-        ]
-        
+        docks = [self.code_dock, self.reg_dock, self.flag_dock, self.hex_dock, self.stack_dock, self.mmap_dock, self.bp_dock]
         for dock in docks:
             view_menu.addAction(dock.toggleViewAction())
 
     def _setup_toolbar(self):
         toolbar = QToolBar("Execution Control")
-        toolbar.setObjectName("MainToolBar") # For saveState
+        toolbar.setObjectName("MainToolBar")
         self.addToolBar(toolbar)
         
         self.step_action = QAction("Step", self)
@@ -189,72 +139,60 @@ class MainWindow(QMainWindow):
         toolbar.addAction(reset_action)
 
     def _setup_docks(self):
-        # @intent:rationale 柔軟なレイアウト（ネスティング、タブ化）を許可し、左右のドックエリアが画面の角を占有するように設定します。
         self.setDockOptions(QMainWindow.AnimatedDocks | QMainWindow.AllowNestedDocks | QMainWindow.AllowTabbedDocks)
         self.setCorner(Qt.TopLeftCorner, Qt.LeftDockWidgetArea)
         self.setCorner(Qt.BottomLeftCorner, Qt.LeftDockWidgetArea)
         self.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
         self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
 
-        # Core Canvas (Main Center)
         self.core_canvas = CoreCanvasWidget()
         self.setCentralWidget(self.core_canvas)
 
-        # Code View
         self.code_dock = QDockWidget("Code", self)
         self.code_dock.setObjectName("CodeDock")
         self.code_view = CodeView()
         self.code_dock.setWidget(self.code_view)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.code_dock)
 
-        # Register View
         self.reg_dock = QDockWidget("Registers", self)
         self.reg_dock.setObjectName("RegisterDock")
         self.register_view = RegisterView()
         self.reg_dock.setWidget(self.register_view)
         self.addDockWidget(Qt.RightDockWidgetArea, self.reg_dock)
 
-        # Flag View
         self.flag_dock = QDockWidget("Flags", self)
         self.flag_dock.setObjectName("FlagDock")
         self.flag_view = FlagView()
         self.flag_dock.setWidget(self.flag_view)
         self.addDockWidget(Qt.RightDockWidgetArea, self.flag_dock)
 
-        # Hex View
         self.hex_dock = QDockWidget("Memory (HEX)", self)
         self.hex_dock.setObjectName("HexDock")
         self.hex_view = HexView()
         self.hex_dock.setWidget(self.hex_view)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.hex_dock)
 
-        # Stack View
         self.stack_dock = QDockWidget("Stack", self)
         self.stack_dock.setObjectName("StackDock")
         self.stack_view = StackView()
         self.stack_dock.setWidget(self.stack_view)
         self.addDockWidget(Qt.RightDockWidgetArea, self.stack_dock)
         
-        # Memory Map View
         self.mmap_dock = QDockWidget("Memory Map", self)
         self.mmap_dock.setObjectName("MemoryMapDock")
         self.memory_map_view = MemoryMapView()
         self.mmap_dock.setWidget(self.memory_map_view)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.mmap_dock)
 
-        # Breakpoint View
         self.bp_dock = QDockWidget("Breakpoints", self)
         self.bp_dock.setObjectName("BreakpointDock")
         self.breakpoint_view = BreakpointView()
         self.bp_dock.setWidget(self.breakpoint_view)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.bp_dock)
         
-        # Connect signals
         self.breakpoint_view.breakpoint_added.connect(self._add_breakpoint)
         self.breakpoint_view.breakpoint_removed.connect(self._remove_breakpoint)
         self.breakpoint_view.breakpoint_updated.connect(self._update_breakpoint)
-
-        # Create View Menu
         self._create_view_menu()
 
     def _load_config(self):
@@ -263,8 +201,7 @@ class MainWindow(QMainWindow):
             try:
                 loader = ConfigLoader()
                 self.config = loader.load_from_file(file_name)
-                builder = SystemBuilder()
-                self.cpu, self.bus = builder.build_system(self.config)
+                self.cpu, self.bus = self.builder.build_system(self.config)
                 self.debugger = Debugger(self.cpu)
                 
                 self.register_view.set_cpu(self.cpu)
@@ -275,7 +212,6 @@ class MainWindow(QMainWindow):
                 self.memory_map_view.set_config(self.config, self.bus)
                 self.breakpoint_view.set_cpu(self.cpu)
                 
-                # @intent:responsibility ビジュアライザーに構成情報とCPUを渡します。
                 self.core_canvas.set_config(self.config)
                 self.core_canvas.set_cpu(self.cpu)
                 
@@ -293,14 +229,15 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Intel HEX File", "", "HEX Files (*.hex);;All Files (*)")
         if file_name:
             try:
-                # @intent:responsibility LoaderFactoryを使用してローダーを生成し、結合度を下げます。
+                # @intent:rationale ロード前に Config の初期状態に戻すことで、常にクリーンな状態から開始可能にします。
+                self.builder.apply_initial_state(self.cpu, self.config.initial_state)
+                
                 loader = LoaderFactory.create_loader(file_name)
                 loader.load(file_name, self.bus)
-                # @intent:responsibility コードロード後にリセットを行い、ベクタを反映させます。
-                self.cpu.reset()
+                
                 self.code_view.reset_cache()
                 self._update_all_views()
-                self.statusBar().showMessage(f"Loaded HEX and Reset: {file_name}")
+                self.statusBar().showMessage(f"Reset and Loaded HEX: {file_name}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load HEX: {str(e)}")
 
@@ -311,14 +248,12 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Motorola S-Record File", "", "S-Record Files (*.s19 *.s28 *.s37 *.srec);;All Files (*)")
         if file_name:
             try:
-                # @intent:responsibility LoaderFactoryを使用してローダーを生成し、結合度を下げます。
+                self.builder.apply_initial_state(self.cpu, self.config.initial_state)
                 loader = LoaderFactory.create_loader(file_name)
                 loader.load(file_name, self.bus)
-                # @intent:responsibility コードロード後にリセットを行い、ベクタを反映させます。
-                self.cpu.reset()
                 self.code_view.reset_cache()
                 self._update_all_views()
-                self.statusBar().showMessage(f"Loaded S-Record and Reset: {file_name}")
+                self.statusBar().showMessage(f"Reset and Loaded S-Record: {file_name}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load S-Record: {str(e)}")
 
@@ -329,8 +264,8 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Load Assembly File", "", "Assembly Files (*.asm);;All Files (*)")
         if file_name:
             try:
+                self.builder.apply_initial_state(self.cpu, self.config.initial_state)
                 arch = self.config.architecture if self.config else "Z80"
-                # @intent:responsibility LoaderFactoryを使用してローダーを生成します。
                 loader = LoaderFactory.create_loader(file_name)
                 symbol_map = loader.load(file_name, self.bus, architecture=arch)
                 
@@ -339,11 +274,9 @@ class MainWindow(QMainWindow):
                     self.code_view.set_symbol_map(symbol_map)
                     self.breakpoint_view.set_symbol_map(symbol_map)
                 
-                # @intent:responsibility コードロード後にリセットを行い、ベクタを反映させます。
-                self.cpu.reset()
                 self.code_view.reset_cache()
                 self._update_all_views()
-                self.statusBar().showMessage(f"Loaded assembly and Reset: {file_name} ({arch})")
+                self.statusBar().showMessage(f"Reset and Loaded assembly: {file_name} ({arch})")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load assembly: {str(e)}")
 
@@ -378,10 +311,11 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Stopped")
 
     def _reset_cpu(self):
-        if self.cpu:
-            self.cpu.reset()
+        if self.cpu and self.config:
+            # @intent:note 単なる物理リセットではなく、Configの初期状態を再適用します。
+            self.builder.apply_initial_state(self.cpu, self.config.initial_state)
             self._update_all_views()
-            self.statusBar().showMessage("CPU Reset")
+            self.statusBar().showMessage("CPU Reset (Initial state restored)")
 
     def _add_breakpoint(self, condition: BreakpointCondition):
         if self.debugger: self.debugger.add_breakpoint(condition)

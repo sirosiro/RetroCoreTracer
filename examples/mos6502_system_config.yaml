@@ -1,0 +1,16 @@
+# examples/mos6502_system_config.yaml
+architecture: "MOS6502"
+
+memory_map:
+  - start: 0x0000
+    end: 0xFFFF
+    type: "RAM"
+    label: "Main Memory"
+
+initial_state:
+  pc: 0x0200
+  sp: 0xFD
+  registers:
+    a: 0x00
+    x: 0x00
+    y: 0x00

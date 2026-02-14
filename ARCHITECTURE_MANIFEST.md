@@ -87,11 +87,12 @@
 - **責務 (Responsibility):** 抽象的なCPUの状態管理と、命令サイクルの実行制御に関する責務。
 - **詳細仕様:** `src/retro_core_tracer/core/ARCHITECTURE_MANIFEST.md` を参照してください。
 
-#### 4.3. Architecture Layer (Z80 / MC6800)
+#### 4.3. Architecture Layer (Z80 / MC6800 / MOS6502)
 - **責務 (Responsibility):** 各プロセッサ固有の命令セット、レジスタ構造、状態遷移の定義に関する責務。
 - **詳細仕様:** 
     - `src/retro_core_tracer/arch/z80/ARCHITECTURE_MANIFEST.md`
-    - `src/retro_core_tracer/arch/mc6800/ARCHITECTURE_MANIFEST.md` を参照してください。
+    - `src/retro_core_tracer/arch/mc6800/ARCHITECTURE_MANIFEST.md`
+    - `src/retro_core_tracer/arch/mos6502/ARCHITECTURE_MANIFEST.md` を参照してください。
 
 #### 4.4. Hybrid Debugger (デバッガ)
 - **責務 (Responsibility):** 実行制御（ステップ実行、ブレークポイント）と、コアの状態観測に関する責務。

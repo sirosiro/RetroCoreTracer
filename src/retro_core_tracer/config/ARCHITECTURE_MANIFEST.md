@@ -67,5 +67,7 @@
     - メモリマップ (`memory_map`) に基づいてデバイスを登録する。
     - I/Oマップ (`io_map`) に基づいてI/Oデバイスを登録する。
     - CPUの初期状態 (`initial_state`) を適用する。
+    - `apply_initial_state(cpu, config_state)` メソッドにより、いつでもConfigの初期状態にCPUをリセット・復元する機能を提供する。
 - **API:**
     - `build_system(config: SystemConfig) -> Tuple[AbstractCpu, Bus]`
+    - `apply_initial_state(cpu: AbstractCpu, config_state: CpuInitialState) -> None`
